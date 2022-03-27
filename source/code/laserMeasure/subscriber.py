@@ -1,5 +1,8 @@
+import math
 from fontTools.pens.basePen import BasePen
+from fontTools.pens.pointPen import AbstractPointPen
 import defcon
+from lib.tools import bezierTools
 from fontParts.world import RGlyph
 from mojo import events
 from mojo import tools
@@ -11,16 +14,36 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
     debug = True
     strokeColor = (0, 0.3, 1, 1)
     textColor = (1, 1, 1, 1)
+    activateWithCharacter = "m"
+    activateWithModifiers = dict(
+        shiftDown=False,
+        capLockDown=False,
+        optionDown=False,
+        controlDown=False,
+        commandDown=False
+    )
 
     def build(self):
         r, g, b, a = self.strokeColor
         highlightColor = (r, g, b, a * 0.2)
+        lineAttributes = dict(
+            strokeColor=self.strokeColor,
+            strokeWidth=1
+        )
+        highlightAttributes = dict(
+            fillColor=None,
+            strokeColor=highlightColor,
+            strokeWidth=10,
+            strokeCap="round"
+        )
         textAttributes = dict(
             backgroundColor=self.strokeColor,
             fillColor=self.textColor,
             padding=(6, 3),
             cornerRadius=5,
             offset=(7, 7),
+            horizontalAlignment="left",
+            verticalAlignment="bottom",
             pointSize=12,
             weight="bold",
             figureStyle="regular"
@@ -36,20 +59,12 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             visible=False
         )
         self.outlineWidthLayer = self.outlineLayer.appendLineSublayer(
-            startPoint=(0, 100),
-            endPoint=(100, 100),
-            strokeColor=self.strokeColor,
-            strokeWidth=(1)
+            **lineAttributes
         )
         self.outlineHeightLayer = self.outlineLayer.appendLineSublayer(
-            startPoint=(100, 0),
-            endPoint=(100, 100),
-            strokeColor=self.strokeColor,
-            strokeWidth=(1)
+            **lineAttributes
         )
         self.outlineTextLayer = self.outlineLayer.appendTextLineSublayer(
-            horizontalAlignment="left",
-            verticalAlignment="bottom",
             **textAttributes
         )
         # segment
@@ -57,14 +72,9 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             visible=False
         )
         self.segmentHighlightLayer = self.segmentLayer.appendPathSublayer(
-            fillColor=None,
-            strokeColor=highlightColor,
-            strokeWidth=10,
-            strokeCap="round"
+            **highlightAttributes
         )
         self.segmentTextLayer = self.segmentLayer.appendTextLineSublayer(
-            horizontalAlignment="right",
-            verticalAlignment="bottom",
             **textAttributes
         )
         # handle
@@ -72,72 +82,79 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             visible=False
         )
         self.handleHighlightLayer = self.handleLayer.appendPathSublayer(
-            fillColor=None,
-            strokeColor=highlightColor,
-            strokeWidth=10,
-            strokeCap="round"
+            **highlightAttributes
         )
         self.handleTextLayer = self.handleLayer.appendTextLineSublayer(
-            horizontalAlignment="right",
-            verticalAlignment="bottom",
             **textAttributes
         )
         self.hideLayers()
+        # points
+        self.pointLayer = self.container.appendBaseSublayer(
+            visible=False
+        )
+        self.pointLineLayer = self.pointLayer.appendLineSublayer(
+            **lineAttributes
+        )
+        self.pointTextLayer = self.pointLayer.appendTextLineSublayer(
+            **textAttributes
+        )
 
     def destroy(self):
         self.container.clearSublayers()
 
     def hideLayers(self):
-        self.outlineLayer.setVisible(False)
-        self.segmentLayer.setVisible(False)
-        self.handleLayer.setVisible(False)
-
-    def glyphEditorDidChangeModifiers(self, info):
-        deviceState = info["deviceState"]
-        if not deviceState["capLockDown"]:
-            self.hideLayers()
-            return
+        self.container.setVisible(False)
 
     def glyphEditorDidMouseDown(self, info):
+        self.wantsMeasurements = False
+        self.hideLayers()
+
+    wantsMeasurements = False
+
+    def glyphEditorDidKeyDown(self, info):
+        deviceState = info["deviceState"]
+        wrongModifiers = False
+        for name, state in self.activateWithModifiers.items():
+            if deviceState[name] != state:
+                wrongModifiers = True
+                break
+        if wrongModifiers:
+            self.wantsMeasurements = False
+        elif deviceState["keyDownWithoutModifiers"] != self.activateWithCharacter:
+            self.wantsMeasurements = False
+        else:
+            self.wantsMeasurements = True
+
+    def glyphEditorDidKeyUp(self, info):
+        self.wantsMeasurements = False
         self.hideLayers()
 
     def glyphEditorDidMouseMove(self, info):
-        deviceState = info["deviceState"]
-        if not deviceState["capLockDown"]:
-            self.hideLayers()
+        if not self.wantsMeasurements:
             return
         glyph = info["glyph"]
         if not glyph.bounds:
             self.hideLayers()
             return
+        deviceState = info["deviceState"]
         point = tuple(info["locationInGlyph"])
-        if deviceState["commandDown"]:
-            self.outlineLayer.setVisible(False)
-            if deviceState["optionDown"]:
-                self.segmentLayer.setVisible(False)
-                self.measureHandles(
-                    point,
-                    glyph,
-                    deviceState
-                )
-                self.handleLayer.setVisible(True)
-            else:
-                self.handleLayer.setVisible(False)
-                self.measureSegments(
-                    point,
-                    glyph,
-                    deviceState
-                )
-                self.segmentLayer.setVisible(True)
-        else:
-            self.handleLayer.setVisible(False)
-            self.segmentLayer.setVisible(False)
-            self.measureOutline(
-                point,
-                glyph,
-                deviceState
-            )
-            self.outlineLayer.setVisible(True)
+        handleState = False
+        segmentState = False
+        pointState = False
+        outlineState = False
+        if self.measureHandles(point, glyph, deviceState):
+            handleState = True
+        elif self.measureSegments(point, glyph, deviceState):
+            segmentState = True
+        elif self.measurePoints(point, glyph, deviceState):
+            pointState = True
+        elif self.measureOutline(point, glyph, deviceState):
+            outlineState = True
+        self.handleLayer.setVisible(handleState)
+        self.segmentLayer.setVisible(segmentState)
+        self.pointLayer.setVisible(pointState)
+        self.outlineLayer.setVisible(outlineState)
+        self.container.setVisible(True)
 
     def measureHandles(self,
             point,
@@ -145,7 +162,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             deviceState
         ):
         glyph = glyph.getRepresentation("com.typesupply.LaserMeasure.handlesAsLines")
-        measureSegmentsAndHandles(
+        return measureSegmentsAndHandles(
             point,
             glyph,
             self.handleHighlightLayer,
@@ -157,12 +174,33 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             glyph,
             deviceState
         ):
-        measureSegmentsAndHandles(
+        return measureSegmentsAndHandles(
             point,
             glyph,
             self.segmentHighlightLayer,
             self.segmentTextLayer
         )
+
+    def measurePoints(self,
+            point,
+            glyph,
+            deviceState
+        ):
+        pen = NearestPointsPointPen(point)
+        glyph.drawPoints(pen)
+        points = pen.getPoints()
+        if not points:
+            return
+        point1, point2 = points
+        x1, y1 = point1
+        x2, y2 = point2
+        width = int(round(abs(x1 - x2)))
+        height = int(round(abs(y1 - y2)))
+        self.pointLineLayer.setStartPoint(point1)
+        self.pointLineLayer.setEndPoint(point2)
+        self.pointTextLayer.setPosition(point)
+        self.pointTextLayer.setText(f"{width} × {height}")
+        return True
 
     def measureOutline(self,
             point,
@@ -232,7 +270,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         with self.outlineTextLayer.propertyGroup():
             self.outlineTextLayer.setPosition((x, y))
             self.outlineTextLayer.setText(f"{width} × {height}")
-
+        return True
 
 def findAdjacentValues(
         value,
@@ -302,6 +340,7 @@ def measureSegmentsAndHandles(
     textLayer.setText(f"{width} × {height}")
     highlightLayer.setVisible(True)
     textLayer.setVisible(True)
+    return True
 
 
 class HandlesToLinesPen(BasePen):
@@ -354,6 +393,72 @@ defcon.registerRepresentationFactory(
     "com.typesupply.LaserMeasure.handlesAsLines",
     handlesAsLinesGlyphFactory
 )
+
+class NearestPointsPointPen(AbstractPointPen):
+
+    def __init__(self, point):
+        self.point = point
+        self.negative = []
+        self.positive = []
+
+    def beginPath(self, **kwargs):
+        pass
+
+    def endPath(self, **kwargs):
+        pass
+
+    def addComponent(self, **kwargs):
+        pass
+
+    def addPoint(self, pt, **kwargs):
+        import math
+        distance = bezierTools.distanceFromPointToPoint(
+            self.point,
+            pt
+        )
+        angle = bezierTools.calculateAngle(
+            self.point,
+            pt
+        )
+        if angle < 0:
+            self.negative.append((distance, pt))
+        else:
+            self.positive.append((distance, pt))
+
+    def getPoints(self):
+        if self.negative and self.positive:
+            self.negative.sort()
+            self.positive.sort()
+            prevPrevPoint = None
+            prevPoint = self.negative[0][1]
+            point = self.point
+            nextPoint = self.positive[0][1]
+            nextNextPoint = None
+            if len(self.negative) > 1:
+                prevPrevPoint = self.negative[1][1]
+            if len(self.positive) > 1:
+                nextNextPoint = self.positive[1][1]
+            candidates = [
+                (prevPoint, point, nextPoint),
+                (prevPrevPoint, point, nextPoint),
+                (prevPoint, point, nextNextPoint),
+                (prevPrevPoint, point, nextNextPoint)
+            ]
+            for candidate in candidates:
+                if None in candidate:
+                    continue
+                if isCloseToCollinear(prevPoint, point, nextPoint):
+                    return (prevPoint, nextPoint)
+        return None
+
+collinearityTolerance = 0.1
+
+def isCloseToCollinear(pt1, pt2, pt3):
+    dx1, dy1 = pt2[0] - pt1[0], pt2[1] - pt1[1]
+    dx2, dy2 = pt3[0] - pt2[0], pt3[1] - pt2[1]
+    a1 = math.atan2(dx1, dy1)
+    a2 = math.atan2(dx2, dy2)
+    return abs(a1 - a2) < collinearityTolerance
 
 
 def main():
