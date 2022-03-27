@@ -15,13 +15,6 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
     strokeColor = (0, 0.3, 1, 1)
     textColor = (1, 1, 1, 1)
     activateWithCharacter = "m"
-    activateWithModifiers = dict(
-        shiftDown=False,
-        capLockDown=False,
-        optionDown=False,
-        controlDown=False,
-        commandDown=False
-    )
 
     def build(self):
         r, g, b, a = self.strokeColor
@@ -113,14 +106,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
 
     def glyphEditorDidKeyDown(self, info):
         deviceState = info["deviceState"]
-        wrongModifiers = False
-        for name, state in self.activateWithModifiers.items():
-            if deviceState[name] != state:
-                wrongModifiers = True
-                break
-        if wrongModifiers:
-            self.wantsMeasurements = False
-        elif deviceState["keyDownWithoutModifiers"] != self.activateWithCharacter:
+        if deviceState["keyDownWithoutModifiers"] != self.activateWithCharacter:
             self.wantsMeasurements = False
         else:
             self.wantsMeasurements = True
