@@ -1,4 +1,5 @@
 import math
+from fontTools.misc import transform
 from fontTools.pens.basePen import BasePen
 from fontTools.pens.pointPen import AbstractPointPen
 import defcon
@@ -14,6 +15,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
     debug = True
     strokeColor = (0, 0.3, 1, 1)
     textColor = (1, 1, 1, 1)
+    matchColor = (1, 1, 0, 0.5)
     activateWithCharacter = "m"
 
     def build(self):
@@ -60,6 +62,14 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.outlineTextLayer = self.outlineLayer.appendTextLineSublayer(
             **textAttributes
         )
+        # segment match
+        self.matchLayer = self.container.appendBaseSublayer(
+            visible=False
+        )
+        self.matchHighlightLayer = self.container.appendPathSublayer(
+            **highlightAttributes
+        )
+        self.matchHighlightLayer.setStrokeColor(self.matchColor)
         # segment
         self.segmentLayer = self.container.appendBaseSublayer(
             visible=False
@@ -160,12 +170,50 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             glyph,
             deviceState
         ):
-        return measureSegmentsAndHandles(
+        hit = measureSegmentsAndHandles(
             point,
             glyph,
             self.segmentHighlightLayer,
             self.segmentTextLayer
         )
+        if hit:
+            segmentType, segmentPoints = hit
+            self._findMatchingSegments(
+                segmentType,
+                segmentPoints,
+                glyph
+            )
+            self.matchHighlightLayer.setVisible(True)
+            return True
+        else:
+            self.matchHighlightLayer.setVisible(False)
+
+    def _findMatchingSegments(self,
+            segmentType,
+            segmentPoints,
+            glyph
+        ):
+        # XXX
+        # This is horribly inefficient.
+        # 1. don't draw with the layer pen.
+        #    draw to CGPen and set the path.
+        # 2. get the segments from a representation.
+        layer = self.matchHighlightLayer
+        layerPen = layer.getPen()
+        target = SegmentMatcher(segmentType, segmentPoints)
+        segmentsPen = SegmentsPen()
+        glyph.draw(segmentsPen)
+        for otherSegmentType, otherSegmentPoints in segmentsPen.segments:
+            if target.compare(otherSegmentType, otherSegmentPoints):
+                layerPen.moveTo(otherSegmentPoints[0])
+                if otherSegmentType == "line":
+                    layerPen.lineTo(otherSegmentPoints[1])
+                elif otherSegmentType == "curve":
+                    layerPen.curveTo(*otherSegmentPoints[1:])
+                elif otherSegmentType == "qcurve":
+                    layerPen.qCurveTo(*otherSegmentPoints[1:])
+                layerPen.endPath()
+
 
     def measurePoints(self,
             point,
@@ -258,6 +306,10 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             self.outlineTextLayer.setText(f"{width} × {height}")
         return True
 
+# -----
+# Tools
+# -----
+
 def findAdjacentValues(
         value,
         otherValues,
@@ -285,6 +337,9 @@ def findAdjacentValues(
     return v1, v2, d
 
 
+# Segments and Handles
+# --------------------
+
 def measureSegmentsAndHandles(
         point,
         glyph,
@@ -308,16 +363,19 @@ def measureSegmentsAndHandles(
     x2, y2 = (segment.onCurve.x, segment.onCurve.y)
     pen = highlightLayer.getPen()
     pen.moveTo((x1, y1))
-    if segment.type == "move":
+    segmentType = segment.type
+    if segmentType == "move":
+        segmentType = "line"
+    if segment.type == "line":
         pen.lineTo((x2, y2))
-    elif segment.type == "line":
-        pen.lineTo((x2, y2))
+        points = [(x1, y1), (x2, y2)]
     else:
         points = [(p.x, p.y) for p in segment.points]
         if segment.type == "curve":
             pen.curveTo(*points)
         elif segment.type == "qcurve":
             pen.qCurveTo(*points)
+        points.insert(0, (x1, y1))
     pen.lineTo((x2, y2))
     pen.endPath()
     width = int(round(abs(x1 - x2)))
@@ -326,7 +384,7 @@ def measureSegmentsAndHandles(
     textLayer.setText(f"{width} × {height}")
     highlightLayer.setVisible(True)
     textLayer.setVisible(True)
-    return True
+    return segmentType, points
 
 
 class HandlesToLinesPen(BasePen):
@@ -379,6 +437,10 @@ defcon.registerRepresentationFactory(
     "com.typesupply.LaserMeasure.handlesAsLines",
     handlesAsLinesGlyphFactory
 )
+
+
+# Collinear Points
+# ----------------
 
 class NearestPointsPointPen(AbstractPointPen):
 
@@ -446,6 +508,111 @@ def isCloseToCollinear(pt1, pt2, pt3):
     a2 = math.atan2(dx2, dy2)
     return abs(a1 - a2) < collinearityTolerance
 
+
+# Segment Matching
+# ----------------
+
+class SegmentMatcher:
+
+    def __init__(self, type, segment):
+        if type == "move":
+            type = "line"
+        self.type = type
+        self.original = tuple(segment)
+
+    def compare(self, type, segment):
+        if segment == self.original:
+            return False
+        if type != self.type:
+            return False
+        if len(segment) != len(self.original):
+            return False
+        og = segment
+        segment = makeRelativeSegment(segment)
+        generators = (
+            ("base", None),
+            ("rotated90", [rotate90Transform.transformPoints]),
+            ("rotated180", [rotate180Transform.transformPoints]),
+            ("rotated270", [rotate270Transform.transformPoints]),
+            ("flippedHorizontal", [flipHorizontalTransform.transformPoints]),
+            ("flippedVertical", [flipVerticalTransform.transformPoints]),
+            ("reversedBase", [makeReversedSegment]),
+            ("reversedRotated90", [makeReversedSegment, rotate90Transform.transformPoints]),
+            ("reversedRotated180", [makeReversedSegment, rotate180Transform.transformPoints]),
+            ("reversedRotated270", [makeReversedSegment, rotate270Transform.transformPoints]),
+            ("reversedFlippedHorizontal", [makeReversedSegment, flipHorizontalTransform.transformPoints]),
+            ("reversedFlippedVertical", [makeReversedSegment, flipVerticalTransform.transformPoints]),
+        )
+        for attr, generator in generators:
+            if not hasattr(self, attr):
+                value = self.original
+                if generator is not None:
+                    for g in generator:
+                        value = g(value)
+                value = makeRelativeSegment(value)
+                setattr(self, attr, value)
+            value = getattr(self, attr)
+            if segment == value:
+                return True
+        return False
+
+
+class SegmentsPen(BasePen):
+
+    def __init__(self):
+        super().__init__()
+        self.prevPoint = None
+        self.segments = []
+
+    def _moveTo(self, pt):
+        self.prevPoint = pt
+
+    def _lineTo(self, pt):
+        self.segments.append(("line", (self.prevPoint, pt)))
+        self.prevPoint = pt
+
+    def _curveToOne(self, pt1, pt2, pt3):
+        self.segments.append(("curve", (self.prevPoint, pt1, pt2, pt3)))
+        self.prevPoint = pt3
+
+    def _qCurveToOne(self, pt1, pt2):
+        self.segments.append(("qcurve", (self.prevPoint, pt1, pt2)))
+        self.prevPoint = pt2
+
+    def _closePath(self):
+        self.prevPoint = None
+
+    def _endPath(self):
+        self.prevPoint = None
+
+
+def makeRelativePoint(point, basePoint):
+    px, py = point
+    bx, by = basePoint
+    x = px - bx
+    y = py - by
+    return (x, y)
+
+def makeRelativeSegment(points):
+    points = [(0, 0)] + [
+        makeRelativePoint(p, points[0])
+        for p in points[1:]
+    ]
+    return points
+
+def makeReversedSegment(points):
+    return list(reversed(points))
+
+rotate90Transform = transform.Transform().rotate(math.radians(90))
+rotate180Transform = transform.Transform().rotate(math.radians(180))
+rotate270Transform = transform.Transform().rotate(math.radians(270))
+flipHorizontalTransform = transform.Scale(1, -1)
+flipVerticalTransform = transform.Scale(-1, 1)
+
+
+# --
+# Go
+# --
 
 def main():
     subscriber.registerGlyphEditorSubscriber(LaserMeasureSubscriber)

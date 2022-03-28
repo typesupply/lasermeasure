@@ -1,21 +1,18 @@
 # Laser Measure
 
-- turn caps lock on to activate
-- hold command to enter segment mode
-- hold command + option to enter handle mode
-- in regular mode:
-    - hold control to ignore components
-    - hold option to use glyph.bounds
-      instead of metrics for edge measurements
+Press `m` to activate. Hover over a handle or segment to get the length and width. Hover between two points to get the length and width between them. Hover anywhere else to get a length and width measurement of the nearest outlines or left/right and top/bottom metrics. Hold option to measure the edge of the glyph's bounds instead of the metrics.
 
 ## To Do
-- are the key commands for segment/handle
-  measurement too cumbersome in practice?
+- in collinear mode, prefer hits that are closer to 90 and 0
+- move highlights and strokes to background layer
+- highlight segments/handles with the same values
+- is ignore components necessary?
+- go back to caps lock
 - need smarter fallbacks when mousing
   outside of the standard glyph rect
-- option for measuring between the closest
-  on curve points. this will be tricky
-  if the points are not 90° from each other.
-  but this will be useful in italics.
+- should the value used in `selector.segmentStrokeHitByPoint_`
+  vary with the zoom level?
+- anchor to outline measurements using the collinear snap
+- use italic angle for vertical ray?
 - prefs:
   - color
