@@ -8,105 +8,146 @@ from fontParts.world import RGlyph
 from mojo import events
 from mojo import tools
 from mojo import subscriber
+from mojo.extensions import (
+    registerExtensionDefaults,
+    getExtensionDefault,
+    setExtensionDefault
+)
 
+defaultKeyStub = "com.typesupply.LaserMeasure."
+defaults = {
+    defaultKeyStub + "triggerCharacter" : "m",
+    defaultKeyStub + "baseColor" : (0, 0.3, 1, 0.8),
+    defaultKeyStub + "matchColor" : (1, 1, 0, 0.5),
+    defaultKeyStub + "highlightStrokeWidth" : 10,
+    defaultKeyStub + "highlightStrokeAlpha" : 0.2,
+    defaultKeyStub + "measurementTextSize" : 12,
+}
+
+registerExtensionDefaults(defaults)
+
+def getDefault(key):
+    key = defaultKeyStub + key
+    return getExtensionDefault(key)
+
+# ----------
+# Subscriber
+# ----------
 
 class LaserMeasureSubscriber(subscriber.Subscriber):
 
     debug = True
-    strokeColor = (0, 0.3, 1, 1)
-    textColor = (1, 1, 1, 1)
-    matchColor = (1, 1, 0, 0.5)
-    activateWithCharacter = "m"
 
     def build(self):
-        r, g, b, a = self.strokeColor
-        highlightColor = (r, g, b, a * 0.2)
-        lineAttributes = dict(
-            strokeColor=self.strokeColor,
-            strokeWidth=1
-        )
-        highlightAttributes = dict(
-            fillColor=None,
-            strokeColor=highlightColor,
-            strokeWidth=10,
-            strokeCap="round"
-        )
-        textAttributes = dict(
-            backgroundColor=self.strokeColor,
-            fillColor=self.textColor,
-            padding=(6, 3),
-            cornerRadius=5,
-            offset=(7, 7),
-            horizontalAlignment="left",
-            verticalAlignment="bottom",
-            pointSize=12,
-            weight="bold",
-            figureStyle="regular"
-        )
         window = self.getGlyphEditor()
-        self.container = window.extensionContainer(
+        self.containerBackground = window.extensionContainer(
+            identifier="com.typesupply.LaserMeasure.background",
+            location="background",
+            clear=True
+        )
+        self.containerForeground = window.extensionContainer(
             identifier="com.typesupply.LaserMeasure.foreground",
             location="foreground",
             clear=True
         )
         # outline
-        self.outlineLayer = self.container.appendBaseSublayer(
+        self.outlineBackground = self.containerBackground.appendBaseSublayer(
             visible=False
         )
-        self.outlineWidthLayer = self.outlineLayer.appendLineSublayer(
-            **lineAttributes
-        )
-        self.outlineHeightLayer = self.outlineLayer.appendLineSublayer(
-            **lineAttributes
-        )
-        self.outlineTextLayer = self.outlineLayer.appendTextLineSublayer(
-            **textAttributes
-        )
-        # segment match
-        self.matchLayer = self.container.appendBaseSublayer(
+        self.outlineForeground = self.containerForeground.appendBaseSublayer(
             visible=False
         )
-        self.matchHighlightLayer = self.container.appendPathSublayer(
-            **highlightAttributes
-        )
-        self.matchHighlightLayer.setStrokeColor(self.matchColor)
+        self.outlineWidthLayer = self.outlineBackground.appendLineSublayer()
+        self.outlineHeightLayer = self.outlineBackground.appendLineSublayer()
+        self.outlineTextLayer = self.outlineForeground.appendTextLineSublayer()
         # segment
-        self.segmentLayer = self.container.appendBaseSublayer(
+        self.segmentBackground = self.containerBackground.appendBaseSublayer(
             visible=False
         )
-        self.segmentHighlightLayer = self.segmentLayer.appendPathSublayer(
-            **highlightAttributes
+        self.segmentForeground = self.containerForeground.appendBaseSublayer(
+            visible=False
         )
-        self.segmentTextLayer = self.segmentLayer.appendTextLineSublayer(
-            **textAttributes
-        )
+        self.segmentMatchHighlightLayer = self.segmentBackground.appendPathSublayer()
+        self.segmentHighlightLayer = self.segmentBackground.appendPathSublayer()
+        self.segmentTextLayer = self.segmentForeground.appendTextLineSublayer()
         # handle
-        self.handleLayer = self.container.appendBaseSublayer(
+        self.handleBackground = self.containerBackground.appendBaseSublayer(
             visible=False
         )
-        self.handleHighlightLayer = self.handleLayer.appendPathSublayer(
-            **highlightAttributes
+        self.handleForeground = self.containerForeground.appendBaseSublayer(
+            visible=False
         )
-        self.handleTextLayer = self.handleLayer.appendTextLineSublayer(
-            **textAttributes
-        )
-        self.hideLayers()
+        self.handleMatchHighlightLayer = self.handleBackground.appendPathSublayer()
+        self.handleHighlightLayer = self.handleBackground.appendPathSublayer()
+        self.handleTextLayer = self.handleForeground.appendTextLineSublayer()
         # points
-        self.pointLayer = self.container.appendBaseSublayer(
+        self.pointBackground = self.containerBackground.appendBaseSublayer(
             visible=False
         )
-        self.pointLineLayer = self.pointLayer.appendLineSublayer(
-            **lineAttributes
+        self.pointForeground = self.containerForeground.appendBaseSublayer(
+            visible=False
         )
-        self.pointTextLayer = self.pointLayer.appendTextLineSublayer(
-            **textAttributes
+        self.pointLineLayer = self.pointBackground.appendLineSublayer()
+        self.pointTextLayer = self.pointForeground.appendTextLineSublayer()
+        # go
+        self.loadDefaults()
+
+    def loadDefaults(self):
+        # load
+        baseColor = getDefault("baseColor")
+        textColor = (1, 1, 1, 1) # XXX editor background color
+        matchColor = getDefault("matchColor")
+        textSize = getDefault("measurementTextSize")
+        highlightAlpha = getDefault("highlightStrokeAlpha")
+        highlightWidth = getDefault("highlightStrokeWidth")
+        self.triggerCharacter = getDefault("triggerCharacter")
+        # build
+        r, g, b, a = baseColor
+        highlightColor = (r, g, b, a * highlightAlpha)
+        lineAttributes = dict(
+            strokeColor=baseColor,
+            strokeWidth=1
         )
+        highlightAttributes = dict(
+            fillColor=None,
+            strokeColor=highlightColor,
+            strokeWidth=highlightWidth,
+            strokeCap="round"
+        )
+        textAttributes = dict(
+            backgroundColor=baseColor,
+            fillColor=textColor,
+            padding=(6, 3),
+            cornerRadius=5,
+            offset=(7, 7),
+            horizontalAlignment="left",
+            verticalAlignment="bottom",
+            pointSize=textSize,
+            weight="bold",
+            figureStyle="regular"
+        )
+        # populate
+        self.outlineWidthLayer.setPropertiesByName(lineAttributes)
+        self.outlineHeightLayer.setPropertiesByName(lineAttributes)
+        self.outlineTextLayer.setPropertiesByName(textAttributes)
+        self.segmentMatchHighlightLayer.setPropertiesByName(highlightAttributes)
+        self.segmentMatchHighlightLayer.setStrokeColor(matchColor)
+        self.segmentHighlightLayer.setPropertiesByName(highlightAttributes)
+        self.segmentTextLayer.setPropertiesByName(textAttributes)
+        self.handleMatchHighlightLayer.setPropertiesByName(highlightAttributes)
+        self.handleMatchHighlightLayer.setStrokeColor(matchColor)
+        self.handleHighlightLayer.setPropertiesByName(highlightAttributes)
+        self.handleTextLayer.setPropertiesByName(textAttributes)
+        self.pointLineLayer.setPropertiesByName(lineAttributes)
+        self.pointTextLayer.setPropertiesByName(textAttributes)
 
     def destroy(self):
-        self.container.clearSublayers()
+        self.containerBackground.clearSublayers()
+        self.containerForeground.clearSublayers()
 
     def hideLayers(self):
-        self.container.setVisible(False)
+        self.containerBackground.setVisible(False)
+        self.containerForeground.setVisible(False)
 
     def glyphEditorDidMouseDown(self, info):
         self.wantsMeasurements = False
@@ -116,7 +157,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
 
     def glyphEditorDidKeyDown(self, info):
         deviceState = info["deviceState"]
-        if deviceState["keyDownWithoutModifiers"] != self.activateWithCharacter:
+        if deviceState["keyDownWithoutModifiers"] != self.triggerCharacter:
             self.wantsMeasurements = False
         else:
             self.wantsMeasurements = True
@@ -146,11 +187,16 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             pointState = True
         elif self.measureOutline(point, glyph, deviceState):
             outlineState = True
-        self.handleLayer.setVisible(handleState)
-        self.segmentLayer.setVisible(segmentState)
-        self.pointLayer.setVisible(pointState)
-        self.outlineLayer.setVisible(outlineState)
-        self.container.setVisible(True)
+        self.handleBackground.setVisible(handleState)
+        self.handleForeground.setVisible(handleState)
+        self.segmentBackground.setVisible(segmentState)
+        self.segmentForeground.setVisible(segmentState)
+        self.pointBackground.setVisible(pointState)
+        self.pointForeground.setVisible(pointState)
+        self.outlineBackground.setVisible(outlineState)
+        self.outlineForeground.setVisible(outlineState)
+        self.containerBackground.setVisible(True)
+        self.containerForeground.setVisible(True)
 
     def measureHandles(self,
             point,
@@ -183,10 +229,10 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
                 segmentPoints,
                 glyph
             )
-            self.matchHighlightLayer.setVisible(True)
+            self.segmentMatchHighlightLayer.setVisible(True)
             return True
         else:
-            self.matchHighlightLayer.setVisible(False)
+            self.segmentMatchHighlightLayer.setVisible(False)
 
     def _findMatchingSegments(self,
             segmentType,
@@ -198,7 +244,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         # 1. don't draw with the layer pen.
         #    draw to CGPen and set the path.
         # 2. get the segments from a representation.
-        layer = self.matchHighlightLayer
+        layer = self.segmentMatchHighlightLayer
         layerPen = layer.getPen()
         target = SegmentMatcher(segmentType, segmentPoints)
         segmentsPen = SegmentsPen()
@@ -213,7 +259,6 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
                 elif otherSegmentType == "qcurve":
                     layerPen.qCurveTo(*otherSegmentPoints[1:])
                 layerPen.endPath()
-
 
     def measurePoints(self,
             point,
