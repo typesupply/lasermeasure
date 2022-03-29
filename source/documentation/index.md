@@ -16,6 +16,7 @@ com.typesupply.LaserMeasure.measurementTextSize
 ```
 
 ## To Do
+
 - try Frederik's close by line code
 - in collinear mode, prefer hits that are closer to 90 and 0
 - anchor to outline measurements using the collinear snap
@@ -23,4 +24,3 @@ com.typesupply.LaserMeasure.measurementTextSize
 - is ignore components necessary?
 - should the value used in `selector.segmentStrokeHitByPoint_` vary with the zoom level?
 - use italic angle for vertical ray?
-- get the editor background color to use for text

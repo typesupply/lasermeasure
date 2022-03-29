@@ -14,6 +14,7 @@ from mojo.extensions import (
     getExtensionDefault,
     setExtensionDefault
 )
+from mojo import UI
 
 extensionID = "com.typesupply.LaserMeasure."
 defaults = {
@@ -96,7 +97,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
     def loadDefaults(self):
         # load
         baseColor = getDefault("baseColor")
-        textColor = (1, 1, 1, 1) # XXX editor background color
+        textColor = UI.getDefault("glyphViewBackgroundColor")
         matchColor = getDefault("matchColor")
         textSize = getDefault("measurementTextSize")
         highlightAlpha = getDefault("highlightStrokeAlpha")

@@ -12,7 +12,7 @@ menuItems = []
 
 mainScript = "main.py"
 launchAtStartUp = True
-installAfterBuild = True
+installAfterBuild = False
 
 # ----------------------
 # Don't edit below here.
