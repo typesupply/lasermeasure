@@ -203,13 +203,37 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             glyph,
             deviceState
         ):
-        glyph = glyph.getRepresentation("com.typesupply.LaserMeasure.handlesAsLines")
-        return measureSegmentsAndHandles(
+        hit = measureSegmentsAndHandles(
             point,
-            glyph,
+            glyph.getRepresentation("com.typesupply.LaserMeasure.handlesAsLines"),
             self.handleHighlightLayer,
             self.handleTextLayer
         )
+        if hit:
+            points = hit[1]
+            self._findMatchingHandles(
+                points,
+                glyph
+            )
+            self.handleMatchHighlightLayer.setVisible(True)
+            return True
+        else:
+            self.handleMatchHighlightLayer.setVisible(False)
+
+    def _findMatchingHandles(self,
+            points,
+            glyph
+        ):
+        layer = self.handleMatchHighlightLayer
+        layerPen = layer.getPen()
+        target = HandleMatcher(points)
+        handlesPen = HandlesPen()
+        glyph.draw(handlesPen)
+        for handle in handlesPen.handles:
+            if target.compare(handle):
+                layerPen.moveTo(handle[0])
+                layerPen.lineTo(handle[1])
+                layerPen.endPath()
 
     def measureSegments(self,
             point,
@@ -568,11 +592,12 @@ class SegmentMatcher:
     def compare(self, type, segment):
         if segment == self.original:
             return False
+        if makeReversedSegment(segment) == self.original:
+            return False
         if type != self.type:
             return False
         if len(segment) != len(self.original):
             return False
-        og = segment
         segment = makeRelativeSegment(segment)
         generators = (
             ("base", None),
@@ -646,13 +671,54 @@ def makeRelativeSegment(points):
     return points
 
 def makeReversedSegment(points):
-    return list(reversed(points))
+    return tuple(reversed(points))
 
 rotate90Transform = transform.Transform().rotate(math.radians(90))
 rotate180Transform = transform.Transform().rotate(math.radians(180))
 rotate270Transform = transform.Transform().rotate(math.radians(270))
 flipHorizontalTransform = transform.Scale(1, -1)
 flipVerticalTransform = transform.Scale(-1, 1)
+
+
+# Handle Matching
+# ---------------
+
+class HandleMatcher(SegmentMatcher):
+
+    def __init__(self, points):
+        super().__init__(None, points)
+
+    def compare(self, points):
+        return super().compare(None, points)
+
+
+class HandlesPen(BasePen):
+
+    def __init__(self):
+        super().__init__()
+        self.handles = []
+
+    def _moveTo(self, pt):
+        self.prevPoint = pt
+
+    def _lineTo(self, pt):
+        self.prevPoint = pt
+
+    def _curveToOne(self, pt1, pt2, pt3):
+        self.handles.append((self.prevPoint, pt1))
+        self.handles.append((pt2, pt3))
+        self.prevPoint = pt3
+
+    def _qCurveToOne(self, pt1, pt2):
+        self.handles.append((self.prevPoint, pt1))
+        self.handles.append((pt1, pt2))
+        self.prevPoint = pt2
+
+    def _closePath(self):
+        self.prevPoint = None
+
+    def _endPath(self):
+        self.prevPoint = None
 
 
 # --
