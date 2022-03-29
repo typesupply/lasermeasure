@@ -5,108 +5,151 @@ from fontTools.pens.pointPen import AbstractPointPen
 import defcon
 from lib.tools import bezierTools
 from fontParts.world import RGlyph
+import merz
 from mojo import events
 from mojo import tools
 from mojo import subscriber
+from mojo.extensions import (
+    registerExtensionDefaults,
+    getExtensionDefault,
+    setExtensionDefault
+)
+from mojo import UI
 
+extensionID = "com.typesupply.LaserMeasure."
+defaults = {
+    extensionID + "triggerCharacter" : "m",
+    extensionID + "baseColor" : (0, 0.3, 1, 0.8),
+    extensionID + "matchColor" : (1, 1, 0, 0.5),
+    extensionID + "highlightStrokeWidth" : 10,
+    extensionID + "highlightStrokeAlpha" : 0.2,
+    extensionID + "measurementTextSize" : 12,
+}
+
+registerExtensionDefaults(defaults)
+
+def getDefault(key):
+    key = extensionID + key
+    return getExtensionDefault(key)
+
+# ----------
+# Subscriber
+# ----------
 
 class LaserMeasureSubscriber(subscriber.Subscriber):
 
     debug = True
-    strokeColor = (0, 0.3, 1, 1)
-    textColor = (1, 1, 1, 1)
-    matchColor = (1, 1, 0, 0.5)
-    activateWithCharacter = "m"
 
     def build(self):
-        r, g, b, a = self.strokeColor
-        highlightColor = (r, g, b, a * 0.2)
+        window = self.getGlyphEditor()
+        self.containerBackground = window.extensionContainer(
+            identifier=extensionID + "background",
+            location="background",
+            clear=True
+        )
+        self.containerForeground = window.extensionContainer(
+            identifier=extensionID + "foreground",
+            location="foreground",
+            clear=True
+        )
+        # outline
+        self.outlineBackground = self.containerBackground.appendBaseSublayer(
+            visible=False
+        )
+        self.outlineForeground = self.containerForeground.appendBaseSublayer(
+            visible=False
+        )
+        self.outlineWidthLayer = self.outlineBackground.appendLineSublayer()
+        self.outlineHeightLayer = self.outlineBackground.appendLineSublayer()
+        self.outlineTextLayer = self.outlineForeground.appendTextLineSublayer()
+        # segment
+        self.segmentBackground = self.containerBackground.appendBaseSublayer(
+            visible=False
+        )
+        self.segmentForeground = self.containerForeground.appendBaseSublayer(
+            visible=False
+        )
+        self.segmentMatchHighlightLayer = self.segmentBackground.appendPathSublayer()
+        self.segmentHighlightLayer = self.segmentBackground.appendPathSublayer()
+        self.segmentTextLayer = self.segmentForeground.appendTextLineSublayer()
+        # handle
+        self.handleBackground = self.containerBackground.appendBaseSublayer(
+            visible=False
+        )
+        self.handleForeground = self.containerForeground.appendBaseSublayer(
+            visible=False
+        )
+        self.handleMatchHighlightLayer = self.handleBackground.appendPathSublayer()
+        self.handleHighlightLayer = self.handleBackground.appendPathSublayer()
+        self.handleTextLayer = self.handleForeground.appendTextLineSublayer()
+        # points
+        self.pointBackground = self.containerBackground.appendBaseSublayer(
+            visible=False
+        )
+        self.pointForeground = self.containerForeground.appendBaseSublayer(
+            visible=False
+        )
+        self.pointLineLayer = self.pointBackground.appendLineSublayer()
+        self.pointTextLayer = self.pointForeground.appendTextLineSublayer()
+        # go
+        self.loadDefaults()
+
+    def loadDefaults(self):
+        # load
+        baseColor = getDefault("baseColor")
+        textColor = UI.getDefault("glyphViewBackgroundColor")
+        matchColor = getDefault("matchColor")
+        textSize = getDefault("measurementTextSize")
+        highlightAlpha = getDefault("highlightStrokeAlpha")
+        highlightWidth = getDefault("highlightStrokeWidth")
+        self.triggerCharacter = getDefault("triggerCharacter")
+        # build
+        r, g, b, a = baseColor
+        highlightColor = (r, g, b, a * highlightAlpha)
         lineAttributes = dict(
-            strokeColor=self.strokeColor,
+            strokeColor=baseColor,
             strokeWidth=1
         )
         highlightAttributes = dict(
             fillColor=None,
             strokeColor=highlightColor,
-            strokeWidth=10,
+            strokeWidth=highlightWidth,
             strokeCap="round"
         )
         textAttributes = dict(
-            backgroundColor=self.strokeColor,
-            fillColor=self.textColor,
+            backgroundColor=baseColor,
+            fillColor=textColor,
             padding=(6, 3),
             cornerRadius=5,
             offset=(7, 7),
             horizontalAlignment="left",
             verticalAlignment="bottom",
-            pointSize=12,
+            pointSize=textSize,
             weight="bold",
             figureStyle="regular"
         )
-        window = self.getGlyphEditor()
-        self.container = window.extensionContainer(
-            identifier="com.typesupply.LaserMeasure.foreground",
-            location="foreground",
-            clear=True
-        )
-        # outline
-        self.outlineLayer = self.container.appendBaseSublayer(
-            visible=False
-        )
-        self.outlineWidthLayer = self.outlineLayer.appendLineSublayer(
-            **lineAttributes
-        )
-        self.outlineHeightLayer = self.outlineLayer.appendLineSublayer(
-            **lineAttributes
-        )
-        self.outlineTextLayer = self.outlineLayer.appendTextLineSublayer(
-            **textAttributes
-        )
-        # segment match
-        self.matchLayer = self.container.appendBaseSublayer(
-            visible=False
-        )
-        self.matchHighlightLayer = self.container.appendPathSublayer(
-            **highlightAttributes
-        )
-        self.matchHighlightLayer.setStrokeColor(self.matchColor)
-        # segment
-        self.segmentLayer = self.container.appendBaseSublayer(
-            visible=False
-        )
-        self.segmentHighlightLayer = self.segmentLayer.appendPathSublayer(
-            **highlightAttributes
-        )
-        self.segmentTextLayer = self.segmentLayer.appendTextLineSublayer(
-            **textAttributes
-        )
-        # handle
-        self.handleLayer = self.container.appendBaseSublayer(
-            visible=False
-        )
-        self.handleHighlightLayer = self.handleLayer.appendPathSublayer(
-            **highlightAttributes
-        )
-        self.handleTextLayer = self.handleLayer.appendTextLineSublayer(
-            **textAttributes
-        )
-        self.hideLayers()
-        # points
-        self.pointLayer = self.container.appendBaseSublayer(
-            visible=False
-        )
-        self.pointLineLayer = self.pointLayer.appendLineSublayer(
-            **lineAttributes
-        )
-        self.pointTextLayer = self.pointLayer.appendTextLineSublayer(
-            **textAttributes
-        )
+        # populate
+        self.outlineWidthLayer.setPropertiesByName(lineAttributes)
+        self.outlineHeightLayer.setPropertiesByName(lineAttributes)
+        self.outlineTextLayer.setPropertiesByName(textAttributes)
+        self.segmentMatchHighlightLayer.setPropertiesByName(highlightAttributes)
+        self.segmentMatchHighlightLayer.setStrokeColor(matchColor)
+        self.segmentHighlightLayer.setPropertiesByName(highlightAttributes)
+        self.segmentTextLayer.setPropertiesByName(textAttributes)
+        self.handleMatchHighlightLayer.setPropertiesByName(highlightAttributes)
+        self.handleMatchHighlightLayer.setStrokeColor(matchColor)
+        self.handleHighlightLayer.setPropertiesByName(highlightAttributes)
+        self.handleTextLayer.setPropertiesByName(textAttributes)
+        self.pointLineLayer.setPropertiesByName(lineAttributes)
+        self.pointTextLayer.setPropertiesByName(textAttributes)
 
     def destroy(self):
-        self.container.clearSublayers()
+        self.containerBackground.clearSublayers()
+        self.containerForeground.clearSublayers()
 
     def hideLayers(self):
-        self.container.setVisible(False)
+        self.containerBackground.setVisible(False)
+        self.containerForeground.setVisible(False)
 
     def glyphEditorDidMouseDown(self, info):
         self.wantsMeasurements = False
@@ -116,7 +159,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
 
     def glyphEditorDidKeyDown(self, info):
         deviceState = info["deviceState"]
-        if deviceState["keyDownWithoutModifiers"] != self.activateWithCharacter:
+        if deviceState["keyDownWithoutModifiers"] != self.triggerCharacter:
             self.wantsMeasurements = False
         else:
             self.wantsMeasurements = True
@@ -146,24 +189,53 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             pointState = True
         elif self.measureOutline(point, glyph, deviceState):
             outlineState = True
-        self.handleLayer.setVisible(handleState)
-        self.segmentLayer.setVisible(segmentState)
-        self.pointLayer.setVisible(pointState)
-        self.outlineLayer.setVisible(outlineState)
-        self.container.setVisible(True)
+        self.handleBackground.setVisible(handleState)
+        self.handleForeground.setVisible(handleState)
+        self.segmentBackground.setVisible(segmentState)
+        self.segmentForeground.setVisible(segmentState)
+        self.pointBackground.setVisible(pointState)
+        self.pointForeground.setVisible(pointState)
+        self.outlineBackground.setVisible(outlineState)
+        self.outlineForeground.setVisible(outlineState)
+        self.containerBackground.setVisible(True)
+        self.containerForeground.setVisible(True)
 
     def measureHandles(self,
             point,
             glyph,
             deviceState
         ):
-        glyph = glyph.getRepresentation("com.typesupply.LaserMeasure.handlesAsLines")
-        return measureSegmentsAndHandles(
+        hit = measureSegmentsAndHandles(
             point,
-            glyph,
+            glyph.getRepresentation(extensionID + "handlesAsLines"),
             self.handleHighlightLayer,
             self.handleTextLayer
         )
+        if hit:
+            points = hit[1]
+            self._findMatchingHandles(
+                points,
+                glyph
+            )
+            self.handleMatchHighlightLayer.setVisible(True)
+            return True
+        else:
+            self.handleMatchHighlightLayer.setVisible(False)
+
+    def _findMatchingHandles(self,
+            points,
+            glyph
+        ):
+        layer = self.handleMatchHighlightLayer
+        layerPen = merz.MerzPen()
+        target = HandleMatcher(points)
+        handles = glyph.getRepresentation(extensionID + "handles")
+        for handle in handles:
+            if target.compare(handle):
+                layerPen.moveTo(handle[0])
+                layerPen.lineTo(handle[1])
+                layerPen.endPath()
+        layer.setPath(layerPen.path)
 
     def measureSegments(self,
             point,
@@ -183,27 +255,21 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
                 segmentPoints,
                 glyph
             )
-            self.matchHighlightLayer.setVisible(True)
+            self.segmentMatchHighlightLayer.setVisible(True)
             return True
         else:
-            self.matchHighlightLayer.setVisible(False)
+            self.segmentMatchHighlightLayer.setVisible(False)
 
     def _findMatchingSegments(self,
             segmentType,
             segmentPoints,
             glyph
         ):
-        # XXX
-        # This is horribly inefficient.
-        # 1. don't draw with the layer pen.
-        #    draw to CGPen and set the path.
-        # 2. get the segments from a representation.
-        layer = self.matchHighlightLayer
-        layerPen = layer.getPen()
+        layer = self.segmentMatchHighlightLayer
+        layerPen = merz.MerzPen()
         target = SegmentMatcher(segmentType, segmentPoints)
-        segmentsPen = SegmentsPen()
-        glyph.draw(segmentsPen)
-        for otherSegmentType, otherSegmentPoints in segmentsPen.segments:
+        segments = glyph.getRepresentation(extensionID + "segments")
+        for otherSegmentType, otherSegmentPoints in segments:
             if target.compare(otherSegmentType, otherSegmentPoints):
                 layerPen.moveTo(otherSegmentPoints[0])
                 if otherSegmentType == "line":
@@ -213,7 +279,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
                 elif otherSegmentType == "qcurve":
                     layerPen.qCurveTo(*otherSegmentPoints[1:])
                 layerPen.endPath()
-
+        layer.setPath(layerPen.path)
 
     def measurePoints(self,
             point,
@@ -361,7 +427,7 @@ def measureSegmentsAndHandles(
     prevSegment = segments[segmentIndex - 1]
     x1, y1 = (prevSegment.onCurve.x, prevSegment.onCurve.y)
     x2, y2 = (segment.onCurve.x, segment.onCurve.y)
-    pen = highlightLayer.getPen()
+    pen = merz.MerzPen()
     pen.moveTo((x1, y1))
     segmentType = segment.type
     if segmentType == "move":
@@ -378,6 +444,7 @@ def measureSegmentsAndHandles(
         points.insert(0, (x1, y1))
     pen.lineTo((x2, y2))
     pen.endPath()
+    highlightLayer.setPath(pen.path)
     width = int(round(abs(x1 - x2)))
     height = int(round(abs(y1 - y2)))
     textLayer.setPosition((x, y))
@@ -434,7 +501,7 @@ def handlesAsLinesGlyphFactory(glyph):
 
 defcon.registerRepresentationFactory(
     defcon.Glyph,
-    "com.typesupply.LaserMeasure.handlesAsLines",
+    extensionID + "handlesAsLines",
     handlesAsLinesGlyphFactory
 )
 
@@ -523,11 +590,12 @@ class SegmentMatcher:
     def compare(self, type, segment):
         if segment == self.original:
             return False
+        if makeReversedSegment(segment) == self.original:
+            return False
         if type != self.type:
             return False
         if len(segment) != len(self.original):
             return False
-        og = segment
         segment = makeRelativeSegment(segment)
         generators = (
             ("base", None),
@@ -585,6 +653,17 @@ class SegmentsPen(BasePen):
     def _endPath(self):
         self.prevPoint = None
 
+def segmentsGlyphFactory(glyph):
+    segmentsPen = SegmentsPen()
+    glyph.draw(segmentsPen)
+    return segmentsPen.segments
+
+defcon.registerRepresentationFactory(
+    defcon.Glyph,
+    extensionID + "segments",
+    segmentsGlyphFactory
+)
+
 
 def makeRelativePoint(point, basePoint):
     px, py = point
@@ -601,13 +680,66 @@ def makeRelativeSegment(points):
     return points
 
 def makeReversedSegment(points):
-    return list(reversed(points))
+    return tuple(reversed(points))
 
 rotate90Transform = transform.Transform().rotate(math.radians(90))
 rotate180Transform = transform.Transform().rotate(math.radians(180))
 rotate270Transform = transform.Transform().rotate(math.radians(270))
 flipHorizontalTransform = transform.Scale(1, -1)
 flipVerticalTransform = transform.Scale(-1, 1)
+
+
+# Handle Matching
+# ---------------
+
+class HandleMatcher(SegmentMatcher):
+
+    def __init__(self, points):
+        super().__init__(None, points)
+
+    def compare(self, points):
+        return super().compare(None, points)
+
+
+class HandlesPen(BasePen):
+
+    def __init__(self):
+        super().__init__()
+        self.handles = []
+
+    def _moveTo(self, pt):
+        self.prevPoint = pt
+
+    def _lineTo(self, pt):
+        self.prevPoint = pt
+
+    def _curveToOne(self, pt1, pt2, pt3):
+        self.handles.append((self.prevPoint, pt1))
+        self.handles.append((pt2, pt3))
+        self.prevPoint = pt3
+
+    def _qCurveToOne(self, pt1, pt2):
+        self.handles.append((self.prevPoint, pt1))
+        self.handles.append((pt1, pt2))
+        self.prevPoint = pt2
+
+    def _closePath(self):
+        self.prevPoint = None
+
+    def _endPath(self):
+        self.prevPoint = None
+
+def handlesGlyphFactory(glyph):
+    handlesPen = HandlesPen()
+    glyph.draw(handlesPen)
+    return handlesPen.handles
+
+defcon.registerRepresentationFactory(
+    defcon.Glyph,
+    extensionID + "handles",
+    handlesGlyphFactory
+)
+
 
 
 # --
