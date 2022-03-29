@@ -16,7 +16,6 @@ com.typesupply.LaserMeasure.measurementTextSize
 ```
 
 ## To Do
-- do the optimizations in _findMatchingSegments and _findMatchingHandles
 - try Frederik's close by line code
 - in collinear mode, prefer hits that are closer to 90 and 0
 - anchor to outline measurements using the collinear snap

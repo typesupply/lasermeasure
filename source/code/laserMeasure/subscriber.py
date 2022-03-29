@@ -5,6 +5,7 @@ from fontTools.pens.pointPen import AbstractPointPen
 import defcon
 from lib.tools import bezierTools
 from fontParts.world import RGlyph
+import merz
 from mojo import events
 from mojo import tools
 from mojo import subscriber
@@ -14,20 +15,20 @@ from mojo.extensions import (
     setExtensionDefault
 )
 
-defaultKeyStub = "com.typesupply.LaserMeasure."
+extensionID = "com.typesupply.LaserMeasure."
 defaults = {
-    defaultKeyStub + "triggerCharacter" : "m",
-    defaultKeyStub + "baseColor" : (0, 0.3, 1, 0.8),
-    defaultKeyStub + "matchColor" : (1, 1, 0, 0.5),
-    defaultKeyStub + "highlightStrokeWidth" : 10,
-    defaultKeyStub + "highlightStrokeAlpha" : 0.2,
-    defaultKeyStub + "measurementTextSize" : 12,
+    extensionID + "triggerCharacter" : "m",
+    extensionID + "baseColor" : (0, 0.3, 1, 0.8),
+    extensionID + "matchColor" : (1, 1, 0, 0.5),
+    extensionID + "highlightStrokeWidth" : 10,
+    extensionID + "highlightStrokeAlpha" : 0.2,
+    extensionID + "measurementTextSize" : 12,
 }
 
 registerExtensionDefaults(defaults)
 
 def getDefault(key):
-    key = defaultKeyStub + key
+    key = extensionID + key
     return getExtensionDefault(key)
 
 # ----------
@@ -41,12 +42,12 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
     def build(self):
         window = self.getGlyphEditor()
         self.containerBackground = window.extensionContainer(
-            identifier="com.typesupply.LaserMeasure.background",
+            identifier=extensionID + "background",
             location="background",
             clear=True
         )
         self.containerForeground = window.extensionContainer(
-            identifier="com.typesupply.LaserMeasure.foreground",
+            identifier=extensionID + "foreground",
             location="foreground",
             clear=True
         )
@@ -205,7 +206,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         ):
         hit = measureSegmentsAndHandles(
             point,
-            glyph.getRepresentation("com.typesupply.LaserMeasure.handlesAsLines"),
+            glyph.getRepresentation(extensionID + "handlesAsLines"),
             self.handleHighlightLayer,
             self.handleTextLayer
         )
@@ -225,15 +226,15 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             glyph
         ):
         layer = self.handleMatchHighlightLayer
-        layerPen = layer.getPen()
+        layerPen = merz.MerzPen()
         target = HandleMatcher(points)
-        handlesPen = HandlesPen()
-        glyph.draw(handlesPen)
-        for handle in handlesPen.handles:
+        handles = glyph.getRepresentation(extensionID + "handles")
+        for handle in handles:
             if target.compare(handle):
                 layerPen.moveTo(handle[0])
                 layerPen.lineTo(handle[1])
                 layerPen.endPath()
+        layer.setPath(layerPen.path)
 
     def measureSegments(self,
             point,
@@ -263,17 +264,11 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             segmentPoints,
             glyph
         ):
-        # XXX
-        # This is horribly inefficient.
-        # 1. don't draw with the layer pen.
-        #    draw to CGPen and set the path.
-        # 2. get the segments from a representation.
         layer = self.segmentMatchHighlightLayer
-        layerPen = layer.getPen()
+        layerPen = merz.MerzPen()
         target = SegmentMatcher(segmentType, segmentPoints)
-        segmentsPen = SegmentsPen()
-        glyph.draw(segmentsPen)
-        for otherSegmentType, otherSegmentPoints in segmentsPen.segments:
+        segments = glyph.getRepresentation(extensionID + "segments")
+        for otherSegmentType, otherSegmentPoints in segments:
             if target.compare(otherSegmentType, otherSegmentPoints):
                 layerPen.moveTo(otherSegmentPoints[0])
                 if otherSegmentType == "line":
@@ -283,6 +278,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
                 elif otherSegmentType == "qcurve":
                     layerPen.qCurveTo(*otherSegmentPoints[1:])
                 layerPen.endPath()
+        layer.setPath(layerPen.path)
 
     def measurePoints(self,
             point,
@@ -430,7 +426,7 @@ def measureSegmentsAndHandles(
     prevSegment = segments[segmentIndex - 1]
     x1, y1 = (prevSegment.onCurve.x, prevSegment.onCurve.y)
     x2, y2 = (segment.onCurve.x, segment.onCurve.y)
-    pen = highlightLayer.getPen()
+    pen = merz.MerzPen()
     pen.moveTo((x1, y1))
     segmentType = segment.type
     if segmentType == "move":
@@ -447,6 +443,7 @@ def measureSegmentsAndHandles(
         points.insert(0, (x1, y1))
     pen.lineTo((x2, y2))
     pen.endPath()
+    highlightLayer.setPath(pen.path)
     width = int(round(abs(x1 - x2)))
     height = int(round(abs(y1 - y2)))
     textLayer.setPosition((x, y))
@@ -503,7 +500,7 @@ def handlesAsLinesGlyphFactory(glyph):
 
 defcon.registerRepresentationFactory(
     defcon.Glyph,
-    "com.typesupply.LaserMeasure.handlesAsLines",
+    extensionID + "handlesAsLines",
     handlesAsLinesGlyphFactory
 )
 
@@ -655,6 +652,17 @@ class SegmentsPen(BasePen):
     def _endPath(self):
         self.prevPoint = None
 
+def segmentsGlyphFactory(glyph):
+    segmentsPen = SegmentsPen()
+    glyph.draw(segmentsPen)
+    return segmentsPen.segments
+
+defcon.registerRepresentationFactory(
+    defcon.Glyph,
+    extensionID + "segments",
+    segmentsGlyphFactory
+)
+
 
 def makeRelativePoint(point, basePoint):
     px, py = point
@@ -719,6 +727,18 @@ class HandlesPen(BasePen):
 
     def _endPath(self):
         self.prevPoint = None
+
+def handlesGlyphFactory(glyph):
+    handlesPen = HandlesPen()
+    glyph.draw(handlesPen)
+    return handlesPen.handles
+
+defcon.registerRepresentationFactory(
+    defcon.Glyph,
+    extensionID + "handles",
+    handlesGlyphFactory
+)
+
 
 
 # --
