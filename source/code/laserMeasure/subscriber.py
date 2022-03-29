@@ -16,6 +16,7 @@ from mojo.extensions import (
 )
 from mojo import UI
 
+
 extensionID = "com.typesupply.LaserMeasure."
 defaults = {
     extensionID + "triggerCharacter" : "m",
@@ -38,7 +39,7 @@ def getDefault(key):
 
 class LaserMeasureSubscriber(subscriber.Subscriber):
 
-    debug = True
+    debug = False
 
     def build(self):
         window = self.getGlyphEditor()
@@ -750,4 +751,5 @@ def main():
     subscriber.registerGlyphEditorSubscriber(LaserMeasureSubscriber)
 
 if __name__ == "__main__":
+    LaserMeasureSubscriber.debug = True
     main()
