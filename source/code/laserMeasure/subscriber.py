@@ -332,8 +332,20 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         else:
             xBeforeFallback = min((0, x))
             xAfterFallback = max((glyph.width, x))
-            yBeforeFallback = 1
-            yAfterFallback = font.info.ascender
+            verticalMetrics = [
+                font.info.descender,
+                0,
+                font.info.xHeight,
+                font.info.capHeight,
+                font.info.ascender
+            ]
+            yBeforeFallback = min(verticalMetrics)
+            yAfterFallback = max(verticalMetrics)
+            for value in verticalMetrics:
+                if value > yBeforeFallback and value <= y:
+                    yBeforeFallback = value
+                if value < yAfterFallback and value >= y:
+                    yAfterFallback = value
         # width
         xLine = (
             (xMin, y),
