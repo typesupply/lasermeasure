@@ -2,6 +2,7 @@ import math
 from fontTools.misc import transform
 from fontTools.pens.basePen import BasePen
 from fontTools.pens.pointPen import AbstractPointPen
+from fontTools.misc import arrayTools
 import defcon
 import AppKit
 from lib.tools import bezierTools
@@ -95,6 +96,16 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         )
         self.pointLineLayer = self.pointBackground.appendLineSublayer()
         self.pointTextLayer = self.pointForeground.appendTextLineSublayer()
+        # anchor
+        self.anchorBackground = self.containerBackground.appendBaseSublayer(
+            visible=False
+        )
+        self.anchorForeground = self.containerForeground.appendBaseSublayer(
+            visible=False
+        )
+        self.anchorWidthLayer = self.anchorBackground.appendLineSublayer()
+        self.anchorHeightLayer = self.anchorBackground.appendLineSublayer()
+        self.anchorTextLayer = self.anchorForeground.appendTextLineSublayer()
         # go
         self.loadDefaults()
 
@@ -146,6 +157,9 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.handleTextLayer.setPropertiesByName(textAttributes)
         self.pointLineLayer.setPropertiesByName(lineAttributes)
         self.pointTextLayer.setPropertiesByName(textAttributes)
+        self.anchorWidthLayer.setPropertiesByName(lineAttributes)
+        self.anchorHeightLayer.setPropertiesByName(lineAttributes)
+        self.anchorTextLayer.setPropertiesByName(textAttributes)
 
     def destroy(self):
         self.containerBackground.clearSublayers()
@@ -184,12 +198,16 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             return
         deviceState = info["deviceState"]
         point = tuple(info["locationInGlyph"])
+        anchorState = False
         handleState = False
         segmentState = False
         pointState = False
         outlineState = False
         cursorMode = "searching"
-        if self.measureHandles(point, glyph, deviceState):
+        if self.measureAnchors(point, glyph, deviceState):
+            anchorState = True
+            cursorMode = "hit"
+        elif self.measureHandles(point, glyph, deviceState):
             handleState = True
             cursorMode = "hit"
         elif self.measureSegments(point, glyph, deviceState):
@@ -201,6 +219,8 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         elif self.measureOutline(point, glyph, deviceState):
             outlineState = True
         setCursorMode(cursorMode)
+        self.anchorBackground.setVisible(anchorState)
+        self.anchorForeground.setVisible(anchorState)
         self.handleBackground.setVisible(handleState)
         self.handleForeground.setVisible(handleState)
         self.segmentBackground.setVisible(segmentState)
@@ -211,6 +231,126 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.outlineForeground.setVisible(outlineState)
         self.containerBackground.setVisible(True)
         self.containerForeground.setVisible(True)
+
+    def _conditionalRectFallbacks(self, point, glyph, deviceState):
+        x, y = point
+        if deviceState["optionDown"]:
+            xBeforeFallback, yBeforeFallback, xAfterFallback, yAfterFallback = glyph.bounds
+        else:
+            font = glyph.font
+            xBeforeFallback = min((0, x))
+            xAfterFallback = max((glyph.width, x))
+            verticalMetrics = [
+                font.info.descender,
+                0,
+                font.info.xHeight,
+                font.info.capHeight,
+                font.info.ascender
+            ]
+            yBeforeFallback = min(verticalMetrics)
+            yAfterFallback = max(verticalMetrics)
+            for value in verticalMetrics:
+                if value > yBeforeFallback and value <= y:
+                    yBeforeFallback = value
+                if value < yAfterFallback and value >= y:
+                    yAfterFallback = value
+        return xBeforeFallback, yBeforeFallback, xAfterFallback, yAfterFallback
+
+    def measureAnchors(self,
+            point,
+            glyph,
+            deviceState
+        ):
+        if not glyph.anchors:
+            return
+        if not glyph.bounds:
+            return
+        font = glyph.font
+        tolerance = 20
+        x, y = point
+        xMin = x - tolerance
+        yMin = y - tolerance
+        xMax = x + tolerance
+        yMax = y + tolerance
+        hitRect = (xMin, yMin, xMax, yMax)
+        xMin, yMin, xMax, yMax = glyph.bounds
+        xMin -= font.info.unitsPerEm
+        xMax += font.info.unitsPerEm
+        yMin -= font.info.unitsPerEm
+        yMax += font.info.unitsPerEm
+        for anchor in glyph.anchors:
+            anchorPoint = (anchor.x, anchor.y)
+            if arrayTools.pointInRect(anchorPoint, hitRect):
+                ax, ay = anchorPoint
+                if x <= ax:
+                    xStart = xMin
+                    xStop = ax
+                else:
+                    xStart = ax
+                    xStop = xMax
+                if y <= ay:
+                    yStart = yMin
+                    yStop = ay
+                else:
+                    yStart = ay
+                    yStop = yMax
+                xBeforeFallback, yBeforeFallback, xAfterFallback, yAfterFallback = self._conditionalRectFallbacks(point, glyph, deviceState)
+                xLine = (
+                    (xStart, ay),
+                    (xStop, ay)
+                )
+                xIntersections = tools.IntersectGlyphWithLine(
+                    glyph,
+                    xLine,
+                    canHaveComponent=True,
+                    addSideBearings=False
+                )
+                xIntersections = [oX for oX, oY in xIntersections]
+                xIntersections.sort()
+                if x <= ax:
+                    if not xIntersections:
+                        hitX = xBeforeFallback
+                    else:
+                        hitX = xIntersections[-1]
+                else:
+                    if not xIntersections:
+                        hitX = xAfterFallback
+                    else:
+                        hitX = xIntersections[0]
+                yLine = (
+                    (ax, yStart),
+                    (ax, yStop)
+                )
+                yIntersections = tools.IntersectGlyphWithLine(
+                    glyph,
+                    yLine,
+                    canHaveComponent=True,
+                    addSideBearings=False
+                )
+                yIntersections = [oY for oX, oY in yIntersections]
+                yIntersections.sort()
+                if y <= ay:
+                    if not yIntersections:
+                        hitY = yBeforeFallback
+                    else:
+                        hitY = yIntersections[-1]
+                else:
+                    if not yIntersections:
+                        hitY = yAfterFallback
+                    else:
+                        hitY = yIntersections[0]
+                width = abs(ax - hitX)
+                height = abs(ay - hitY)
+                with self.anchorWidthLayer.propertyGroup():
+                    self.anchorWidthLayer.setStartPoint((hitX, ay))
+                    self.anchorWidthLayer.setEndPoint((ax, ay))
+                with self.anchorHeightLayer.propertyGroup():
+                    self.anchorHeightLayer.setStartPoint((ax, ay))
+                    self.anchorHeightLayer.setEndPoint((ax, hitY))
+                with self.anchorTextLayer.propertyGroup():
+                    self.anchorTextLayer.setPosition((ax, ay))
+                    self.anchorTextLayer.setText(f"{width} × {height}")
+                return True
 
     def measureHandles(self,
             point,
@@ -325,27 +465,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         xMax = glyph.width + font.info.unitsPerEm
         yMin = font.info.descender - font.info.unitsPerEm
         yMax = font.info.ascender + font.info.unitsPerEm
-        # - measure with bounds
-        if deviceState["optionDown"]:
-            xBeforeFallback, yBeforeFallback, xAfterFallback, yAfterFallback = glyph.bounds
-        # - measure with glyph rect
-        else:
-            xBeforeFallback = min((0, x))
-            xAfterFallback = max((glyph.width, x))
-            verticalMetrics = [
-                font.info.descender,
-                0,
-                font.info.xHeight,
-                font.info.capHeight,
-                font.info.ascender
-            ]
-            yBeforeFallback = min(verticalMetrics)
-            yAfterFallback = max(verticalMetrics)
-            for value in verticalMetrics:
-                if value > yBeforeFallback and value <= y:
-                    yBeforeFallback = value
-                if value < yAfterFallback and value >= y:
-                    yAfterFallback = value
+        xBeforeFallback, yBeforeFallback, xAfterFallback, yAfterFallback = self._conditionalRectFallbacks(point, glyph, deviceState)
         # width
         xLine = (
             (xMin, y),
