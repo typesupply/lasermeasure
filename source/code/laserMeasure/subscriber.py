@@ -7,6 +7,7 @@ import AppKit
 from lib.tools import bezierTools
 from fontParts.world import RGlyph
 import merz
+from mojo.roboFont import CreateCursor
 from mojo import events
 from mojo import tools
 from mojo import subscriber
@@ -124,9 +125,9 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             fillColor=textColor,
             padding=(6, 3),
             cornerRadius=5,
-            offset=(7, 7),
+            offset=(7, -7),
             horizontalAlignment="left",
-            verticalAlignment="bottom",
+            verticalAlignment="top",
             pointSize=textSize,
             weight="bold",
             figureStyle="regular"
@@ -157,6 +158,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
     def glyphEditorDidMouseDown(self, info):
         self.wantsMeasurements = False
         self.hideLayers()
+        setCursorMode(None)
 
     wantsMeasurements = False
 
@@ -166,10 +168,12 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             self.wantsMeasurements = False
         else:
             self.wantsMeasurements = True
+            setCursorMode("searching")
 
     def glyphEditorDidKeyUp(self, info):
         self.wantsMeasurements = False
         self.hideLayers()
+        setCursorMode(None)
 
     def glyphEditorDidMouseMove(self, info):
         if not self.wantsMeasurements:
@@ -184,14 +188,19 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         segmentState = False
         pointState = False
         outlineState = False
+        cursorMode = "searching"
         if self.measureHandles(point, glyph, deviceState):
             handleState = True
+            cursorMode = "hit"
         elif self.measureSegments(point, glyph, deviceState):
             segmentState = True
+            cursorMode = "hit"
         elif self.measurePoints(point, glyph, deviceState):
             pointState = True
+            cursorMode = "hit"
         elif self.measureOutline(point, glyph, deviceState):
             outlineState = True
+        setCursorMode(cursorMode)
         self.handleBackground.setVisible(handleState)
         self.handleForeground.setVisible(handleState)
         self.segmentBackground.setVisible(segmentState)
@@ -374,6 +383,41 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             self.outlineTextLayer.setPosition((x, y))
             self.outlineTextLayer.setText(f"{width} × {height}")
         return True
+
+# -------
+# Cursors
+# -------
+
+def setCursorMode(mode):
+    tool = events.getActiveEventTool()
+    if mode == "searching":
+        cursor = mainCursor
+    elif mode == "hit":
+        cursor = mainCursor
+    else:
+        cursor = tool.getDefaultCursor()
+    tool.setCursor(cursor)
+
+size = 15
+black = AppKit.NSColor.colorWithCalibratedWhite_alpha_(0, 1)
+white = AppKit.NSColor.whiteColor()
+oval = AppKit.NSBezierPath.bezierPathWithOvalInRect_(
+    ((5, 5), (size - 10, size - 10))
+)
+
+cursorImage = AppKit.NSImage.alloc().initWithSize_((size, size))
+cursorImage.lockFocus()
+white.set()
+oval.setLineWidth_(2)
+oval.stroke()
+black.set()
+oval.setLineWidth_(1)
+oval.fill()
+cursorImage.unlockFocus()
+mainCursor = CreateCursor(
+    cursorImage,
+    hotSpot=(size/2, size/2)
+)
 
 # -----
 # Tools
@@ -784,7 +828,6 @@ defcon.registerRepresentationFactory(
     extensionID + "handles",
     handlesGlyphFactory
 )
-
 
 
 # --
