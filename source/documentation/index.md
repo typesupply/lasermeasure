@@ -47,6 +47,5 @@ setExtensionDefault(
 - need smarter fallbacks when mousing outside of the standard glyph rect
 - anchor to outline measurements. shoot x and y rays and report.
 - optimize findAdjacentValues
-- remove ignore components stuff
 - should the value used in `selector.segmentStrokeHitByPoint_` vary with the zoom level?
 - use italic angle for vertical ray?

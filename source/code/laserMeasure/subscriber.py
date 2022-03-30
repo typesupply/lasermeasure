@@ -325,8 +325,6 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         xMax = glyph.width + font.info.unitsPerEm
         yMin = font.info.descender - font.info.unitsPerEm
         yMax = font.info.ascender + font.info.unitsPerEm
-        # - ignore components
-        calculateWithComponents = not deviceState["controlDown"]
         # - measure with bounds
         if deviceState["optionDown"]:
             xBeforeFallback, yBeforeFallback, xAfterFallback, yAfterFallback = glyph.bounds
@@ -344,7 +342,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         xIntersections = tools.IntersectGlyphWithLine(
             glyph,
             xLine,
-            canHaveComponent=calculateWithComponents,
+            canHaveComponent=True,
             addSideBearings=False
         )
         xIntersections = [oX for oX, oY in xIntersections]
@@ -362,7 +360,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         yIntersections = tools.IntersectGlyphWithLine(
             glyph,
             yLine,
-            canHaveComponent=calculateWithComponents,
+            canHaveComponent=True,
             addSideBearings=False
         )
         yIntersections = [oY for oX, oY in yIntersections]
