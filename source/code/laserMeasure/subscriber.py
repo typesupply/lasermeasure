@@ -3,6 +3,7 @@ from fontTools.misc import transform
 from fontTools.pens.basePen import BasePen
 from fontTools.pens.pointPen import AbstractPointPen
 import defcon
+import AppKit
 from lib.tools import bezierTools
 from fontParts.world import RGlyph
 import merz
@@ -12,14 +13,15 @@ from mojo import subscriber
 from mojo.extensions import (
     registerExtensionDefaults,
     getExtensionDefault,
-    setExtensionDefault
+    setExtensionDefault,
+    removeExtensionDefault
 )
 from mojo import UI
 
 
 extensionID = "com.typesupply.LaserMeasure."
 defaults = {
-    extensionID + "triggerCharacter" : "m",
+    extensionID + "triggerCharacter" : "d",
     extensionID + "baseColor" : (0, 0.3, 1, 0.8),
     extensionID + "matchColor" : (1, 1, 0, 0.5),
     extensionID + "highlightStrokeWidth" : 10,
@@ -287,9 +289,9 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             glyph,
             deviceState
         ):
-        pen = NearestPointsPointPen(point)
+        pen = NearestPointsPointPen()
         glyph.drawPoints(pen)
-        points = pen.getPoints()
+        points = pen.find(point)
         if not points:
             return
         point1, point2 = points
@@ -512,10 +514,9 @@ defcon.registerRepresentationFactory(
 
 class NearestPointsPointPen(AbstractPointPen):
 
-    def __init__(self, point):
-        self.point = point
-        self.negative = []
-        self.positive = []
+    def __init__(self):
+        self.onCurvePoints = []
+        self.offCurvePoints = []
 
     def beginPath(self, **kwargs):
         pass
@@ -526,55 +527,98 @@ class NearestPointsPointPen(AbstractPointPen):
     def addComponent(self, **kwargs):
         pass
 
-    def addPoint(self, pt, **kwargs):
-        import math
-        distance = bezierTools.distanceFromPointToPoint(
-            self.point,
-            pt
-        )
-        angle = bezierTools.calculateAngle(
-            self.point,
-            pt
-        )
-        if angle < 0:
-            self.negative.append((distance, pt))
+    def addPoint(self, pt, segmentType=None, **kwargs):
+        if segmentType is None:
+            self.offCurvePoints.append(pt)
         else:
-            self.positive.append((distance, pt))
+            self.onCurvePoints.append(pt)
 
-    def getPoints(self):
-        if self.negative and self.positive:
-            self.negative.sort()
-            self.positive.sort()
-            prevPrevPoint = None
-            prevPoint = self.negative[0][1]
-            point = self.point
-            nextPoint = self.positive[0][1]
-            nextNextPoint = None
-            if len(self.negative) > 1:
-                prevPrevPoint = self.negative[1][1]
-            if len(self.positive) > 1:
-                nextNextPoint = self.positive[1][1]
-            candidates = [
-                (prevPoint, point, nextPoint),
-                (prevPrevPoint, point, nextPoint),
-                (prevPoint, point, nextNextPoint),
-                (prevPrevPoint, point, nextNextPoint)
-            ]
-            for candidate in candidates:
-                if None in candidate:
+    def find(self, location):
+        angleRoundingIncrement = 10
+        collinearityTolerance = 0.2
+        rightAngleTolerance = 20
+        # find nearest points for angles
+        # rotating around the location
+        angles = {}
+        for point in self.onCurvePoints:
+            angle = bezierTools.calculateAngle(*sorted((location, point)))
+            angle = normalizeAngle(angle)
+            angle = roundTo(angle, angleRoundingIncrement)
+            if angle not in angles:
+                angles[angle] = []
+            distance = bezierTools.distanceFromPointToPoint(point, location)
+            angles[angle].append((distance, point))
+        nearest = []
+        for angle, points in angles.items():
+            points.sort()
+            distance, point = points[0]
+            nearest.append((angle, distance, point))
+        if len(nearest) < 2:
+            return
+        # use collinearity with the location
+        # to eliminate point combinations that
+        # don't make sense. then further narrow
+        # down based on how close to a right angle
+        # the line between points is.
+        tested = set()
+        candidates = []
+        for angle1, distance1, point1 in nearest:
+            for angle2, distance2, point2 in nearest:
+                if point1 == point2:
                     continue
-                if isCloseToCollinear(prevPoint, point, nextPoint):
-                    return (prevPoint, nextPoint)
-        return None
+                k = tuple(sorted((point1, point2)))
+                if k in tested:
+                    continue
+                x1, y1 = point1
+                x2, y2 = location
+                x3, y3 = point2
+                dx1 = x2 - x1
+                dy1 = y2 - y1
+                dx2 = x3 - x2
+                dy2 = y3 - y2
+                a1 = math.atan2(dx1, dy1)
+                a2 = math.atan2(dx2, dy2)
+                collinearity = abs(a1 - a2)
+                if collinearity > collinearityTolerance:
+                    continue
+                # XXX future candidate eliminators can go here.
+                # - something that eliminates
+                #   lines that cut across contours.
+                #   for example the top curve on a b
+                #   snapping to the bottom of the counter.
+                angle = bezierTools.calculateAngle(point1, point2)
+                angle = normalizeAngle(angle)
+                if angle <= rightAngleTolerance:
+                    angleVariation = angle
+                elif angle >= (90 - rightAngleTolerance) and angle <= (90 + rightAngleTolerance):
+                    angleVariation = abs(90 - angle)
+                elif angle >= (180 - rightAngleTolerance) and angle <= (180 + rightAngleTolerance):
+                    angleVariation = abs(180 - angle)
+                elif angle >= (270 - rightAngleTolerance) and angle <= (270 + rightAngleTolerance):
+                    angleVariation = abs(270 - angle)
+                elif angle >= (360 - rightAngleTolerance):
+                    angleVariation = 360 - angle
+                else:
+                    continue
+                angleVariation = round(angleVariation, -1)
+                angleVariation = 0
+                distance = bezierTools.distanceFromPointToPoint(point1, point2)
+                distance = int(round(distance))
+                candidates.append((angleVariation, distance, (point1, point2)))
+        if not candidates:
+            return
+        candidates.sort()
+        return candidates[0][-1]
 
-collinearityTolerance = 0.1
 
-def isCloseToCollinear(pt1, pt2, pt3):
-    dx1, dy1 = pt2[0] - pt1[0], pt2[1] - pt1[1]
-    dx2, dy2 = pt3[0] - pt2[0], pt3[1] - pt2[1]
-    a1 = math.atan2(dx1, dy1)
-    a2 = math.atan2(dx2, dy2)
-    return abs(a1 - a2) < collinearityTolerance
+def normalizeAngle(angle):
+    if angle < 0:
+        angle = 360 + angle
+    return angle
+
+def roundTo(value, multiple):
+    value = int(round(value / float(multiple))) * multiple
+    return value
 
 
 # Segment Matching
@@ -751,5 +795,9 @@ def main():
     subscriber.registerGlyphEditorSubscriber(LaserMeasureSubscriber)
 
 if __name__ == "__main__":
+    if AppKit.NSUserName() == "tal":
+        for key in defaults.keys():
+            removeExtensionDefault(key)
+        registerExtensionDefaults(defaults)
     LaserMeasureSubscriber.debug = True
     main()

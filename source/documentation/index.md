@@ -19,8 +19,10 @@ com.typesupply.LaserMeasure.measurementTextSize
 
 - try Frederik's close by line code
 - in collinear mode, prefer hits that are closer to 90 and 0
+- change cursor based on hit
 - anchor to outline measurements using the collinear snap
 - need smarter fallbacks when mousing outside of the standard glyph rect
+- optimize findAdjacentValues
 - is ignore components necessary?
 - should the value used in `selector.segmentStrokeHitByPoint_` vary with the zoom level?
 - use italic angle for vertical ray?
