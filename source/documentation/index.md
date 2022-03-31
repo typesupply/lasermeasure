@@ -46,9 +46,6 @@ setExtensionDefault(
 
 # To Do
 
-- annoying edge case where a segment is not hit with the
-  segment test but is hit with the point to point test.
-  maybe pre-disqualify (point1, point2)?
 - optimize findAdjacentValues
 - should the value used in `selector.segmentStrokeHitByPoint_`
   vary with the zoom level?

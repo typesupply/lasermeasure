@@ -698,11 +698,17 @@ defcon.registerRepresentationFactory(
 # Collinear Points
 # ----------------
 
+def _formatCoordinateForSearching(x, y):
+    x = int(round(x))
+    y = int(round(y))
+    return f"{x},{y}"
+
 class NearestPointsPointPen(AbstractPointPen):
 
     def __init__(self):
         self.onCurvePoints = []
         self.offCurvePoints = []
+        self.searchString = None
 
     def beginPath(self, **kwargs):
         pass
@@ -720,6 +726,15 @@ class NearestPointsPointPen(AbstractPointPen):
             self.onCurvePoints.append(pt)
 
     def find(self, location):
+        # get the sequence of points for
+        # eliminating point1-point2 sequences.
+        if self.searchString is None:
+            l = []
+            for x, y in self.onCurvePoints:
+                l.append(_formatCoordinateForSearching(x, y))
+            if l:
+                l.append(l[0])
+            self.searchString = " ".join(l)
         angleRoundingIncrement = 10
         collinearityTolerance = 0.2
         rightAngleTolerance = 20
@@ -741,6 +756,8 @@ class NearestPointsPointPen(AbstractPointPen):
             nearest.append((angle, distance, point))
         if len(nearest) < 2:
             return
+        # skip sequential points because
+        # they are highlighted by another means.
         # use collinearity with the location
         # to eliminate point combinations that
         # don't make sense. then further narrow
@@ -754,6 +771,18 @@ class NearestPointsPointPen(AbstractPointPen):
                     continue
                 k = tuple(sorted((point1, point2)))
                 if k in tested:
+                    continue
+                s = " ".join((
+                    _formatCoordinateForSearching(*point1),
+                    _formatCoordinateForSearching(*point2)
+                ))
+                if s in self.searchString:
+                    continue
+                s = " ".join((
+                    _formatCoordinateForSearching(*point2),
+                    _formatCoordinateForSearching(*point1)
+                ))
+                if s in self.searchString:
                     continue
                 x1, y1 = point1
                 x2, y2 = location
