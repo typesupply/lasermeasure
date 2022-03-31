@@ -3,6 +3,7 @@ from fontTools.misc import transform
 from fontTools.pens.basePen import BasePen
 from fontTools.pens.pointPen import AbstractPointPen
 from fontTools.misc import arrayTools
+from fontTools.misc.fixedTools import otRound
 import defcon
 import AppKit
 from lib.tools import bezierTools
@@ -349,7 +350,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
                     self.anchorHeightLayer.setEndPoint((ax, hitY))
                 with self.anchorTextLayer.propertyGroup():
                     self.anchorTextLayer.setPosition((ax, ay))
-                    self.anchorTextLayer.setText(f"{width} × {height}")
+                    self.anchorTextLayer.setText(formatWidthHeightString(width, height))
                 return True
 
     def measureHandles(self,
@@ -451,7 +452,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.pointLineLayer.setStartPoint(point1)
         self.pointLineLayer.setEndPoint(point2)
         self.pointTextLayer.setPosition(point)
-        self.pointTextLayer.setText(f"{width} × {height}")
+        self.pointTextLayer.setText(formatWidthHeightString(width, height))
         return True
 
     def measureOutline(self,
@@ -511,7 +512,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             self.outlineHeightLayer.setEndPoint((x, y1 + height))
         with self.outlineTextLayer.propertyGroup():
             self.outlineTextLayer.setPosition((x, y))
-            self.outlineTextLayer.setText(f"{width} × {height}")
+            self.outlineTextLayer.setText(formatWidthHeightString(width, height))
         return True
 
 # -------
@@ -552,6 +553,15 @@ mainCursor = CreateCursor(
 # -----
 # Tools
 # -----
+
+def formatWidthHeightString(width, height):
+    width = otRound(width)
+    height = otRound(height)
+    s = f"{width} × {height}"
+    return s
+
+# Adjacent Values
+# ---------------
 
 def findAdjacentValues(
         value,
@@ -625,7 +635,7 @@ def measureSegmentsAndHandles(
     width = int(round(abs(x1 - x2)))
     height = int(round(abs(y1 - y2)))
     textLayer.setPosition((x, y))
-    textLayer.setText(f"{width} × {height}")
+    textLayer.setText(formatWidthHeightString(width, height))
     highlightLayer.setVisible(True)
     textLayer.setVisible(True)
     return segmentType, points

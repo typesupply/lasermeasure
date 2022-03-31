@@ -3,7 +3,9 @@
 Press `d` and move the cursor to activate.
 
 - To get the width and height of a segment: hover over the segment.
+  Other segments with the same width and height will be highlighted.
 - To get the width and height of a handle: hover over a handle.
+  Other handles with the same width and height will be highlighted.
 - To get the width and height between two points, hover between the
   two points. (Only points with angles of +/- 20° from right angles
   will be shown.)
@@ -44,9 +46,9 @@ setExtensionDefault(
 
 # To Do
 
-
-- width x height strings need to be rounded to ints
-- annoying edge case where a segment is not hit with the segment test but is hit with the point to point test.
+- annoying edge case where a segment is not hit with the
+  segment test but is hit with the point to point test.
+  maybe pre-disqualify (point1, point2)?
 - optimize findAdjacentValues
 - should the value used in `selector.segmentStrokeHitByPoint_` vary with the zoom level?
 - use italic angle for vertical ray?
