@@ -9,7 +9,24 @@
         </head>
         <body>
         <h1>Laser Measure</h1>
-<p>Press <code>m</code> to activate. Hover over a handle or segment to get the length and width. Hover between two points to get the length and width between them. Hover anywhere else to get a length and width measurement of the nearest outlines or left/right and top/bottom metrics. Hold option to measure the edge of the glyph's bounds instead of the metrics.</p>
+<p>Press <code>d</code> and move the cursor to activate.</p>
+<ul>
+<li>To get the width and height of a segment: hover over the segment.
+  Other segments with the same width and height will be highlighted.</li>
+<li>To get the width and height of a handle: hover over a handle.
+  Other handles with the same width and height will be highlighted.</li>
+<li>To get the width and height between two points, hover between the
+  two points. (Only points with angles of +/- 20° from right angles
+  will be shown.)</li>
+<li>To get the width and height between the nearest outline lines,
+  hover between the lines you want to measure.</li>
+<li>To get the distance between the exterior of glyph's outline
+  and the closest horizontal and vertical metrics, hover between
+  the outline and the metrics you want to measure.</li>
+<li>To get the distance between the exterior of glyph's outline
+  and glyph's bounding box, hold option and hover outside of
+  glyph's outline.</li>
+</ul>
 <h2 id="defaults">Defaults</h2>
 <p>If you want to change a default, do it with code using these keys until a window is ready:</p>
 <div class="codehilite"><pre><span></span><code>com.typesupply.LaserMeasure.triggerCharacter
@@ -21,16 +38,17 @@ com.typesupply.LaserMeasure.measurementTextSize
 </code></pre></div>
 
 
-<h2 id="to-do">To Do</h2>
-<ul>
-<li>try Frederik's close by line code</li>
-<li>in collinear mode, prefer hits that are closer to 90 and 0</li>
-<li>anchor to outline measurements using the collinear snap</li>
-<li>need smarter fallbacks when mousing outside of the standard glyph rect</li>
-<li>is ignore components necessary?</li>
-<li>should the value used in <code>selector.segmentStrokeHitByPoint_</code> vary with the zoom level?</li>
-<li>use italic angle for vertical ray?</li>
-</ul>
+<div class="codehilite"><pre><span></span><code><span class="kn">from</span> <span class="nn">mojo.extensions</span> <span class="kn">import</span> <span class="n">setExtensionDefault</span>
+
+<span class="n">setExtensionDefault</span><span class="p">(</span>
+    <span class="s2">&quot;com.typesupply.LaserMeasure.triggerCharacter&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;m&quot;</span>
+<span class="p">)</span>
+<span class="n">setExtensionDefault</span><span class="p">(</span>
+    <span class="s2">&quot;com.typesupply.LaserMeasure.baseColor&quot;</span><span class="p">,</span>
+    <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">)</span>
+<span class="p">)</span>
+</code></pre></div>
         </body>
         </html>
         

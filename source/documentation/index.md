@@ -43,10 +43,3 @@ setExtensionDefault(
     (1, 0, 1, 0.5)
 )
 ```
-
-# To Do
-
-- optimize findAdjacentValues
-- should the value used in `selector.segmentStrokeHitByPoint_`
-  vary with the zoom level?
-- use italic angle for vertical ray?

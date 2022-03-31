@@ -2,23 +2,29 @@ import math
 from fontTools.misc import transform
 from fontTools.pens.basePen import BasePen
 from fontTools.pens.pointPen import AbstractPointPen
+from fontTools.misc import arrayTools
+from fontTools.misc.fixedTools import otRound
 import defcon
+import AppKit
 from lib.tools import bezierTools
 from fontParts.world import RGlyph
 import merz
+from mojo.roboFont import CreateCursor
 from mojo import events
 from mojo import tools
 from mojo import subscriber
 from mojo.extensions import (
     registerExtensionDefaults,
     getExtensionDefault,
-    setExtensionDefault
+    setExtensionDefault,
+    removeExtensionDefault
 )
 from mojo import UI
 
+
 extensionID = "com.typesupply.LaserMeasure."
 defaults = {
-    extensionID + "triggerCharacter" : "m",
+    extensionID + "triggerCharacter" : "d",
     extensionID + "baseColor" : (0, 0.3, 1, 0.8),
     extensionID + "matchColor" : (1, 1, 0, 0.5),
     extensionID + "highlightStrokeWidth" : 10,
@@ -38,7 +44,7 @@ def getDefault(key):
 
 class LaserMeasureSubscriber(subscriber.Subscriber):
 
-    debug = True
+    debug = False
 
     def build(self):
         window = self.getGlyphEditor()
@@ -91,6 +97,16 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         )
         self.pointLineLayer = self.pointBackground.appendLineSublayer()
         self.pointTextLayer = self.pointForeground.appendTextLineSublayer()
+        # anchor
+        self.anchorBackground = self.containerBackground.appendBaseSublayer(
+            visible=False
+        )
+        self.anchorForeground = self.containerForeground.appendBaseSublayer(
+            visible=False
+        )
+        self.anchorWidthLayer = self.anchorBackground.appendLineSublayer()
+        self.anchorHeightLayer = self.anchorBackground.appendLineSublayer()
+        self.anchorTextLayer = self.anchorForeground.appendTextLineSublayer()
         # go
         self.loadDefaults()
 
@@ -121,9 +137,9 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             fillColor=textColor,
             padding=(6, 3),
             cornerRadius=5,
-            offset=(7, 7),
+            offset=(7, -7),
             horizontalAlignment="left",
-            verticalAlignment="bottom",
+            verticalAlignment="top",
             pointSize=textSize,
             weight="bold",
             figureStyle="regular"
@@ -142,6 +158,9 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.handleTextLayer.setPropertiesByName(textAttributes)
         self.pointLineLayer.setPropertiesByName(lineAttributes)
         self.pointTextLayer.setPropertiesByName(textAttributes)
+        self.anchorWidthLayer.setPropertiesByName(lineAttributes)
+        self.anchorHeightLayer.setPropertiesByName(lineAttributes)
+        self.anchorTextLayer.setPropertiesByName(textAttributes)
 
     def destroy(self):
         self.containerBackground.clearSublayers()
@@ -154,6 +173,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
     def glyphEditorDidMouseDown(self, info):
         self.wantsMeasurements = False
         self.hideLayers()
+        setCursorMode(None)
 
     wantsMeasurements = False
 
@@ -163,10 +183,12 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             self.wantsMeasurements = False
         else:
             self.wantsMeasurements = True
+            setCursorMode("searching")
 
     def glyphEditorDidKeyUp(self, info):
         self.wantsMeasurements = False
         self.hideLayers()
+        setCursorMode(None)
 
     def glyphEditorDidMouseMove(self, info):
         if not self.wantsMeasurements:
@@ -177,18 +199,29 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             return
         deviceState = info["deviceState"]
         point = tuple(info["locationInGlyph"])
+        anchorState = False
         handleState = False
         segmentState = False
         pointState = False
         outlineState = False
-        if self.measureHandles(point, glyph, deviceState):
+        cursorMode = "searching"
+        if self.measureAnchors(point, glyph, deviceState):
+            anchorState = True
+            cursorMode = "hit"
+        elif self.measureHandles(point, glyph, deviceState):
             handleState = True
+            cursorMode = "hit"
         elif self.measureSegments(point, glyph, deviceState):
             segmentState = True
+            cursorMode = "hit"
         elif self.measurePoints(point, glyph, deviceState):
             pointState = True
+            cursorMode = "hit"
         elif self.measureOutline(point, glyph, deviceState):
             outlineState = True
+        setCursorMode(cursorMode)
+        self.anchorBackground.setVisible(anchorState)
+        self.anchorForeground.setVisible(anchorState)
         self.handleBackground.setVisible(handleState)
         self.handleForeground.setVisible(handleState)
         self.segmentBackground.setVisible(segmentState)
@@ -199,6 +232,128 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.outlineForeground.setVisible(outlineState)
         self.containerBackground.setVisible(True)
         self.containerForeground.setVisible(True)
+
+    def _conditionalRectFallbacks(self, point, glyph, deviceState):
+        x, y = point
+        if deviceState["optionDown"]:
+            xBeforeFallback, yBeforeFallback, xAfterFallback, yAfterFallback = glyph.bounds
+        else:
+            font = glyph.font
+            xBeforeFallback = min((0, x))
+            xAfterFallback = max((glyph.width, x))
+            verticalMetrics = [
+                font.info.descender,
+                0,
+                font.info.xHeight,
+                font.info.capHeight,
+                font.info.ascender
+            ]
+            yBeforeFallback = min(verticalMetrics)
+            yAfterFallback = max(verticalMetrics)
+            for value in verticalMetrics:
+                if value > yBeforeFallback and value <= y:
+                    yBeforeFallback = value
+                if value < yAfterFallback and value >= y:
+                    yAfterFallback = value
+            yBeforeFallback = min((yBeforeFallback, y))
+            yAfterFallback = max((yAfterFallback, y))
+        return xBeforeFallback, yBeforeFallback, xAfterFallback, yAfterFallback
+
+    def measureAnchors(self,
+            point,
+            glyph,
+            deviceState
+        ):
+        if not glyph.anchors:
+            return
+        if not glyph.bounds:
+            return
+        font = glyph.font
+        tolerance = 20
+        x, y = point
+        xMin = x - tolerance
+        yMin = y - tolerance
+        xMax = x + tolerance
+        yMax = y + tolerance
+        hitRect = (xMin, yMin, xMax, yMax)
+        xMin, yMin, xMax, yMax = glyph.bounds
+        xMin -= font.info.unitsPerEm
+        xMax += font.info.unitsPerEm
+        yMin -= font.info.unitsPerEm
+        yMax += font.info.unitsPerEm
+        for anchor in glyph.anchors:
+            anchorPoint = (anchor.x, anchor.y)
+            if arrayTools.pointInRect(anchorPoint, hitRect):
+                ax, ay = anchorPoint
+                if x <= ax:
+                    xStart = xMin
+                    xStop = ax
+                else:
+                    xStart = ax
+                    xStop = xMax
+                if y <= ay:
+                    yStart = yMin
+                    yStop = ay
+                else:
+                    yStart = ay
+                    yStop = yMax
+                xBeforeFallback, yBeforeFallback, xAfterFallback, yAfterFallback = self._conditionalRectFallbacks(point, glyph, deviceState)
+                xLine = (
+                    (xStart, ay),
+                    (xStop, ay)
+                )
+                xIntersections = tools.IntersectGlyphWithLine(
+                    glyph,
+                    xLine,
+                    canHaveComponent=True,
+                    addSideBearings=False
+                )
+                xIntersections = [oX for oX, oY in xIntersections]
+                xIntersections.sort()
+                if x <= ax:
+                    if not xIntersections:
+                        hitX = xBeforeFallback
+                    else:
+                        hitX = xIntersections[-1]
+                else:
+                    if not xIntersections:
+                        hitX = xAfterFallback
+                    else:
+                        hitX = xIntersections[0]
+                yLine = (
+                    (ax, yStart),
+                    (ax, yStop)
+                )
+                yIntersections = tools.IntersectGlyphWithLine(
+                    glyph,
+                    yLine,
+                    canHaveComponent=True,
+                    addSideBearings=False
+                )
+                yIntersections = [oY for oX, oY in yIntersections]
+                yIntersections.sort()
+                if y <= ay:
+                    if not yIntersections:
+                        hitY = yBeforeFallback
+                    else:
+                        hitY = yIntersections[-1]
+                else:
+                    if not yIntersections:
+                        hitY = yAfterFallback
+                    else:
+                        hitY = yIntersections[0]
+                width = abs(ax - hitX)
+                height = abs(ay - hitY)
+                with self.anchorWidthLayer.propertyGroup():
+                    self.anchorWidthLayer.setStartPoint((hitX, ay))
+                    self.anchorWidthLayer.setEndPoint((ax, ay))
+                with self.anchorHeightLayer.propertyGroup():
+                    self.anchorHeightLayer.setStartPoint((ax, ay))
+                    self.anchorHeightLayer.setEndPoint((ax, hitY))
+                with self.anchorTextLayer.propertyGroup():
+                    self.anchorTextLayer.setPosition((ax, ay))
+                    self.anchorTextLayer.setText(formatWidthHeightString(width, height))
+                return True
 
     def measureHandles(self,
             point,
@@ -286,9 +441,8 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             glyph,
             deviceState
         ):
-        pen = NearestPointsPointPen(point)
-        glyph.drawPoints(pen)
-        points = pen.getPoints()
+        pen = glyph.getRepresentation(extensionID + "nearestPointSearcher")
+        points = pen.find(point)
         if not points:
             return
         point1, point2 = points
@@ -299,7 +453,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.pointLineLayer.setStartPoint(point1)
         self.pointLineLayer.setEndPoint(point2)
         self.pointTextLayer.setPosition(point)
-        self.pointTextLayer.setText(f"{width} × {height}")
+        self.pointTextLayer.setText(formatWidthHeightString(width, height))
         return True
 
     def measureOutline(self,
@@ -313,17 +467,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         xMax = glyph.width + font.info.unitsPerEm
         yMin = font.info.descender - font.info.unitsPerEm
         yMax = font.info.ascender + font.info.unitsPerEm
-        # - ignore components
-        calculateWithComponents = not deviceState["controlDown"]
-        # - measure with bounds
-        if deviceState["optionDown"]:
-            xBeforeFallback, yBeforeFallback, xAfterFallback, yAfterFallback = glyph.bounds
-        # - measure with glyph rect
-        else:
-            xBeforeFallback = min((0, x))
-            xAfterFallback = max((glyph.width, x))
-            yBeforeFallback = 1
-            yAfterFallback = font.info.ascender
+        xBeforeFallback, yBeforeFallback, xAfterFallback, yAfterFallback = self._conditionalRectFallbacks(point, glyph, deviceState)
         # width
         xLine = (
             (xMin, y),
@@ -332,7 +476,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         xIntersections = tools.IntersectGlyphWithLine(
             glyph,
             xLine,
-            canHaveComponent=calculateWithComponents,
+            canHaveComponent=True,
             addSideBearings=False
         )
         xIntersections = [oX for oX, oY in xIntersections]
@@ -350,7 +494,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         yIntersections = tools.IntersectGlyphWithLine(
             glyph,
             yLine,
-            canHaveComponent=calculateWithComponents,
+            canHaveComponent=True,
             addSideBearings=False
         )
         yIntersections = [oY for oX, oY in yIntersections]
@@ -369,12 +513,56 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             self.outlineHeightLayer.setEndPoint((x, y1 + height))
         with self.outlineTextLayer.propertyGroup():
             self.outlineTextLayer.setPosition((x, y))
-            self.outlineTextLayer.setText(f"{width} × {height}")
+            self.outlineTextLayer.setText(formatWidthHeightString(width, height))
         return True
+
+# -------
+# Cursors
+# -------
+
+def setCursorMode(mode):
+    tool = events.getActiveEventTool()
+    if mode == "searching":
+        cursor = mainCursor
+    elif mode == "hit":
+        cursor = mainCursor
+    else:
+        cursor = tool.getDefaultCursor()
+    tool.setCursor(cursor)
+
+size = 15
+black = AppKit.NSColor.colorWithCalibratedWhite_alpha_(0, 1)
+white = AppKit.NSColor.whiteColor()
+oval = AppKit.NSBezierPath.bezierPathWithOvalInRect_(
+    ((5, 5), (size - 10, size - 10))
+)
+
+cursorImage = AppKit.NSImage.alloc().initWithSize_((size, size))
+cursorImage.lockFocus()
+white.set()
+oval.setLineWidth_(2)
+oval.stroke()
+black.set()
+oval.setLineWidth_(1)
+oval.fill()
+cursorImage.unlockFocus()
+mainCursor = CreateCursor(
+    cursorImage,
+    hotSpot=(size/2, size/2)
+)
 
 # -----
 # Tools
 # -----
+
+def formatWidthHeightString(width, height):
+    width = otRound(width)
+    height = otRound(height)
+    s = f"{width} × {height}"
+    return s
+
+# Adjacent Values
+# ---------------
 
 def findAdjacentValues(
         value,
@@ -448,7 +636,7 @@ def measureSegmentsAndHandles(
     width = int(round(abs(x1 - x2)))
     height = int(round(abs(y1 - y2)))
     textLayer.setPosition((x, y))
-    textLayer.setText(f"{width} × {height}")
+    textLayer.setText(formatWidthHeightString(width, height))
     highlightLayer.setVisible(True)
     textLayer.setVisible(True)
     return segmentType, points
@@ -509,12 +697,17 @@ defcon.registerRepresentationFactory(
 # Collinear Points
 # ----------------
 
+def _formatCoordinateForSearching(x, y):
+    x = int(round(x))
+    y = int(round(y))
+    return f"{x},{y}"
+
 class NearestPointsPointPen(AbstractPointPen):
 
-    def __init__(self, point):
-        self.point = point
-        self.negative = []
-        self.positive = []
+    def __init__(self):
+        self.onCurvePoints = []
+        self.offCurvePoints = []
+        self.searchString = None
 
     def beginPath(self, **kwargs):
         pass
@@ -525,55 +718,132 @@ class NearestPointsPointPen(AbstractPointPen):
     def addComponent(self, **kwargs):
         pass
 
-    def addPoint(self, pt, **kwargs):
-        import math
-        distance = bezierTools.distanceFromPointToPoint(
-            self.point,
-            pt
-        )
-        angle = bezierTools.calculateAngle(
-            self.point,
-            pt
-        )
-        if angle < 0:
-            self.negative.append((distance, pt))
+    def addPoint(self, pt, segmentType=None, **kwargs):
+        if segmentType is None:
+            self.offCurvePoints.append(pt)
         else:
-            self.positive.append((distance, pt))
+            self.onCurvePoints.append(pt)
 
-    def getPoints(self):
-        if self.negative and self.positive:
-            self.negative.sort()
-            self.positive.sort()
-            prevPrevPoint = None
-            prevPoint = self.negative[0][1]
-            point = self.point
-            nextPoint = self.positive[0][1]
-            nextNextPoint = None
-            if len(self.negative) > 1:
-                prevPrevPoint = self.negative[1][1]
-            if len(self.positive) > 1:
-                nextNextPoint = self.positive[1][1]
-            candidates = [
-                (prevPoint, point, nextPoint),
-                (prevPrevPoint, point, nextPoint),
-                (prevPoint, point, nextNextPoint),
-                (prevPrevPoint, point, nextNextPoint)
-            ]
-            for candidate in candidates:
-                if None in candidate:
+    def find(self, location):
+        # get the sequence of points for
+        # eliminating point1-point2 sequences.
+        if self.searchString is None:
+            l = []
+            for x, y in self.onCurvePoints:
+                l.append(_formatCoordinateForSearching(x, y))
+            if l:
+                l.append(l[0])
+            self.searchString = " ".join(l)
+        angleRoundingIncrement = 10
+        collinearityTolerance = 0.2
+        rightAngleTolerance = 20
+        # find nearest points for angles
+        # rotating around the location
+        angles = {}
+        for point in self.onCurvePoints:
+            angle = bezierTools.calculateAngle(*sorted((location, point)))
+            angle = normalizeAngle(angle)
+            angle = roundTo(angle, angleRoundingIncrement)
+            if angle not in angles:
+                angles[angle] = []
+            distance = bezierTools.distanceFromPointToPoint(point, location)
+            angles[angle].append((distance, point))
+        nearest = []
+        for angle, points in angles.items():
+            points.sort()
+            distance, point = points[0]
+            nearest.append((angle, distance, point))
+        if len(nearest) < 2:
+            return
+        # skip sequential points because
+        # they are highlighted by another means.
+        # use collinearity with the location
+        # to eliminate point combinations that
+        # don't make sense. then further narrow
+        # down based on how close to a right angle
+        # the line between points is.
+        tested = set()
+        candidates = []
+        for angle1, distance1, point1 in nearest:
+            for angle2, distance2, point2 in nearest:
+                if point1 == point2:
                     continue
-                if isCloseToCollinear(prevPoint, point, nextPoint):
-                    return (prevPoint, nextPoint)
-        return None
+                k = tuple(sorted((point1, point2)))
+                if k in tested:
+                    continue
+                s = " ".join((
+                    _formatCoordinateForSearching(*point1),
+                    _formatCoordinateForSearching(*point2)
+                ))
+                if s in self.searchString:
+                    continue
+                s = " ".join((
+                    _formatCoordinateForSearching(*point2),
+                    _formatCoordinateForSearching(*point1)
+                ))
+                if s in self.searchString:
+                    continue
+                x1, y1 = point1
+                x2, y2 = location
+                x3, y3 = point2
+                dx1 = x2 - x1
+                dy1 = y2 - y1
+                dx2 = x3 - x2
+                dy2 = y3 - y2
+                a1 = math.atan2(dx1, dy1)
+                a2 = math.atan2(dx2, dy2)
+                collinearity = abs(a1 - a2)
+                if collinearity > collinearityTolerance:
+                    continue
+                # XXX future candidate eliminators can go here.
+                # - something that eliminates
+                #   lines that cut across contours.
+                #   for example the top curve on a b
+                #   snapping to the bottom of the counter.
+                angle = bezierTools.calculateAngle(point1, point2)
+                angle = normalizeAngle(angle)
+                if angle <= rightAngleTolerance:
+                    angleVariation = angle
+                elif angle >= (90 - rightAngleTolerance) and angle <= (90 + rightAngleTolerance):
+                    angleVariation = abs(90 - angle)
+                elif angle >= (180 - rightAngleTolerance) and angle <= (180 + rightAngleTolerance):
+                    angleVariation = abs(180 - angle)
+                elif angle >= (270 - rightAngleTolerance) and angle <= (270 + rightAngleTolerance):
+                    angleVariation = abs(270 - angle)
+                elif angle >= (360 - rightAngleTolerance):
+                    angleVariation = 360 - angle
+                else:
+                    continue
+                angleVariation = round(angleVariation, -1)
+                angleVariation = 0
+                distance = bezierTools.distanceFromPointToPoint(point1, point2)
+                distance = int(round(distance))
+                candidates.append((angleVariation, distance, (point1, point2)))
+        if not candidates:
+            return
+        candidates.sort()
+        return candidates[0][-1]
 
-collinearityTolerance = 0.1
 
-def isCloseToCollinear(pt1, pt2, pt3):
-    dx1, dy1 = pt2[0] - pt1[0], pt2[1] - pt1[1]
-    dx2, dy2 = pt3[0] - pt2[0], pt3[1] - pt2[1]
-    a1 = math.atan2(dx1, dy1)
-    a2 = math.atan2(dx2, dy2)
-    return abs(a1 - a2) < collinearityTolerance
+def nearestPointSearcherGlyphFactory(glyph):
+    pen = NearestPointsPointPen()
+    glyph.drawPoints(pen)
+    return pen
+
+defcon.registerRepresentationFactory(
+    defcon.Glyph,
+    extensionID + "nearestPointSearcher",
+    nearestPointSearcherGlyphFactory
+)
+
+def normalizeAngle(angle):
+    if angle < 0:
+        angle = 360 + angle
+    return angle
+
+def roundTo(value, multiple):
+    value = int(round(value / float(multiple))) * multiple
+    return value
 
 
 # Segment Matching
@@ -741,7 +1011,6 @@ defcon.registerRepresentationFactory(
 )
 
 
-
 # --
 # Go
 # --
@@ -750,4 +1019,9 @@ def main():
     subscriber.registerGlyphEditorSubscriber(LaserMeasureSubscriber)
 
 if __name__ == "__main__":
+    if AppKit.NSUserName() == "tal":
+        for key in defaults.keys():
+            removeExtensionDefault(key)
+        registerExtensionDefaults(defaults)
+    LaserMeasureSubscriber.debug = True
     main()
