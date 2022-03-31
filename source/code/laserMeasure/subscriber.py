@@ -441,8 +441,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             glyph,
             deviceState
         ):
-        pen = NearestPointsPointPen()
-        glyph.drawPoints(pen)
+        pen = glyph.getRepresentation(extensionID + "nearestPointSearcher")
         points = pen.find(point)
         if not points:
             return
@@ -825,6 +824,17 @@ class NearestPointsPointPen(AbstractPointPen):
         candidates.sort()
         return candidates[0][-1]
 
+
+def nearestPointSearcherGlyphFactory(glyph):
+    pen = NearestPointsPointPen()
+    glyph.drawPoints(pen)
+    return pen
+
+defcon.registerRepresentationFactory(
+    defcon.Glyph,
+    extensionID + "nearestPointSearcher",
+    nearestPointSearcherGlyphFactory
+)
 
 def normalizeAngle(angle):
     if angle < 0:
