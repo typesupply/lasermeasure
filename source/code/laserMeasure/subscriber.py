@@ -255,6 +255,8 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
                     yBeforeFallback = value
                 if value < yAfterFallback and value >= y:
                     yAfterFallback = value
+            yBeforeFallback = min((yBeforeFallback, y))
+            yAfterFallback = max((yAfterFallback, y))
         return xBeforeFallback, yBeforeFallback, xAfterFallback, yAfterFallback
 
     def measureAnchors(self,

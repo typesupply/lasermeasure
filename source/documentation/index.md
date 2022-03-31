@@ -50,5 +50,6 @@ setExtensionDefault(
   segment test but is hit with the point to point test.
   maybe pre-disqualify (point1, point2)?
 - optimize findAdjacentValues
-- should the value used in `selector.segmentStrokeHitByPoint_` vary with the zoom level?
+- should the value used in `selector.segmentStrokeHitByPoint_`
+  vary with the zoom level?
 - use italic angle for vertical ray?
