@@ -58,8 +58,14 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             location="foreground",
             clear=True
         )
+        self.selectionMeasurementsContainer = window.extensionContainer(
+            identifier=extensionID + "selectionMeasurements",
+            location="foreground",
+            clear=True
+        )
         # text
         self.measurementsTextLayer = self.containerForeground.appendTextLineSublayer()
+        self.selectionMeasurementsTextLayer = self.selectionMeasurementsContainer.appendTextLineSublayer()
         # outline
         self.outlineBackground = self.containerBackground.appendBaseSublayer(
             visible=False
@@ -143,6 +149,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         )
         # populate
         self.measurementsTextLayer.setPropertiesByName(textAttributes)
+        self.selectionMeasurementsTextLayer.setPropertiesByName(textAttributes)
         self.outlineWidthLayer.setPropertiesByName(lineAttributes)
         self.outlineHeightLayer.setPropertiesByName(lineAttributes)
         self.segmentMatchHighlightLayer.setPropertiesByName(highlightAttributes)
@@ -162,6 +169,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
     def hideLayers(self):
         self.containerBackground.setVisible(False)
         self.containerForeground.setVisible(False)
+        self.selectionMeasurementsTextLayer.setVisible(False)
 
     def glyphEditorDidMouseDown(self, info):
         self.wantsMeasurements = False
@@ -176,6 +184,14 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             self.wantsMeasurements = False
         else:
             self.wantsMeasurements = True
+            glyph = info["glyph"]
+            selectionState = self.measureSelection(
+                glyph,
+                deviceState
+            )
+            print(selectionState)
+            selectionState = bool(selectionState)
+            self.selectionMeasurementsTextLayer.setVisible(selectionState)
             setCursorMode("searching")
 
     def glyphEditorDidKeyUp(self, info):
@@ -186,6 +202,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
     def glyphEditorDidMouseMove(self, info):
         if not self.wantsMeasurements:
             return
+        self.selectionMeasurementsTextLayer.setVisible(False)
         glyph = info["glyph"]
         if not glyph.bounds:
             self.hideLayers()
@@ -251,6 +268,30 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             yBeforeFallback = min((yBeforeFallback, y))
             yAfterFallback = max((yAfterFallback, y))
         return xBeforeFallback, yBeforeFallback, xAfterFallback, yAfterFallback
+
+    def measureSelection(self,
+            glyph,
+            deviceState
+        ):
+        xValues = set()
+        yValues = set()
+        for contour in glyph.selectedContours:
+            for point in contour.selectedPoints:
+                xValues.add(point.x)
+                yValues.add(point.y)
+        if len(xValues) < 2 and len(yValues) < 2:
+            return
+        xMin = min(xValues)
+        xMax = max(xValues)
+        yMin = min(yValues)
+        yMax = max(yValues)
+        width = xMax - xMin
+        height = yMax - yMin
+        x = (xMin + xMax) / 2
+        y = (yMin + yMax) / 2
+        self.selectionMeasurementsTextLayer.setPosition((x, y))
+        self.selectionMeasurementsTextLayer.setText(formatWidthHeightString(width, height))
+        return True
 
     def measureAnchors(self,
             point,
