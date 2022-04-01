@@ -903,6 +903,7 @@ class SegmentsPen(BasePen):
         self.segments = []
 
     def _moveTo(self, pt):
+        self.firstPoint = pt
         self.prevPoint = pt
 
     def _lineTo(self, pt):
@@ -918,9 +919,13 @@ class SegmentsPen(BasePen):
         self.prevPoint = pt2
 
     def _closePath(self):
+        if self.prevPoint != self.firstPoint:
+            self.segments.append(("line", (self.prevPoint, self.firstPoint)))
+        self.firstPoint = None
         self.prevPoint = None
 
     def _endPath(self):
+        self.firstPoint = None
         self.prevPoint = None
 
 def segmentsGlyphFactory(glyph):
