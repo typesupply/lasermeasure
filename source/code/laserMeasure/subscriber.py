@@ -442,7 +442,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             deviceState
         ):
         pen = glyph.getRepresentation(extensionID + "nearestPointSearcher")
-        points = pen.find(point)
+        points = pen.find(glyph, point)
         if not points:
             return
         point1, point2 = points
@@ -724,7 +724,7 @@ class NearestPointsPointPen(AbstractPointPen):
         else:
             self.onCurvePoints.append(pt)
 
-    def find(self, location):
+    def find(self, glyph, location):
         # get the sequence of points for
         # eliminating point1-point2 sequences.
         if self.searchString is None:
@@ -737,40 +737,32 @@ class NearestPointsPointPen(AbstractPointPen):
         angleRoundingIncrement = 10
         collinearityTolerance = 0.2
         rightAngleTolerance = 20
-        # find nearest points for angles
-        # rotating around the location
-        angles = {}
+        # calculate angle and distance from
+        # location to all points.
+        points = []
         for point in self.onCurvePoints:
             angle = bezierTools.calculateAngle(*sorted((location, point)))
             angle = normalizeAngle(angle)
-            angle = roundTo(angle, angleRoundingIncrement)
-            if angle not in angles:
-                angles[angle] = []
             distance = bezierTools.distanceFromPointToPoint(point, location)
-            angles[angle].append((distance, point))
-        nearest = []
-        for angle, points in angles.items():
-            points.sort()
-            distance, point = points[0]
-            nearest.append((angle, distance, point))
-        if len(nearest) < 2:
+            points.append((angle, distance, point))
+        if len(points) < 2:
             return
-        # skip sequential points because
-        # they are highlighted by another means.
-        # use collinearity with the location
-        # to eliminate point combinations that
-        # don't make sense. then further narrow
-        # down based on how close to a right angle
-        # the line between points is.
+        # test all combinations and
+        # filter combinations that
+        # don't meet various criteria.
         tested = set()
         candidates = []
         for angle1, distance1, point1 in nearest:
             for angle2, distance2, point2 in nearest:
                 if point1 == point2:
                     continue
+                # already tested
                 k = tuple(sorted((point1, point2)))
                 if k in tested:
                     continue
+                # if point1 is immediately followed by
+                # point2, skip. this is better handled
+                # by the segment measurements.
                 s = " ".join((
                     _formatCoordinateForSearching(*point1),
                     _formatCoordinateForSearching(*point2)
@@ -783,6 +775,8 @@ class NearestPointsPointPen(AbstractPointPen):
                 ))
                 if s in self.searchString:
                     continue
+                # if point1 - location - point2 are not
+                # relatively collinear, skip.
                 x1, y1 = point1
                 x2, y2 = location
                 x3, y3 = point2
@@ -795,11 +789,22 @@ class NearestPointsPointPen(AbstractPointPen):
                 collinearity = abs(a1 - a2)
                 if collinearity > collinearityTolerance:
                     continue
-                # XXX future candidate eliminators can go here.
-                # - something that eliminates
-                #   lines that cut across contours.
-                #   for example the top curve on a b
-                #   snapping to the bottom of the counter.
+                # if the line between point1 and point2
+                # intersects a line in the glyph, skip.
+                line = ((x1, y1), (x3, y3))
+                intersections = tools.IntersectGlyphWithLine(
+                    glyph,
+                    line,
+                    canHaveComponent=False,
+                    addSideBearings=False
+                )
+                for point in line:
+                    if point in intersections:
+                        intersections.remove(point)
+                if intersections:
+                    continue
+                # if the line between point1 and point2
+                # is not close to a right angle, skip.
                 angle = bezierTools.calculateAngle(point1, point2)
                 angle = normalizeAngle(angle)
                 if angle <= rightAngleTolerance:
@@ -927,6 +932,7 @@ class SegmentsPen(BasePen):
     def _endPath(self):
         self.firstPoint = None
         self.prevPoint = None
+
 
 def segmentsGlyphFactory(glyph):
     segmentsPen = SegmentsPen()
