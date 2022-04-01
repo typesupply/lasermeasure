@@ -18,6 +18,16 @@ Press `d` and move the cursor to activate.
   and glyph's bounding box, hold option and hover outside of
   glyph's outline.
 
+Distances near anchors can also be reported.
+
+- To get the distance between an anchor and a glyph's outline,
+  hover between the anchor and the outline.
+- To get the distance between an anchor and a glyph's metrics,
+  hover between the anchor and the metrics.
+- To get the distance between an anchor and a glyph's bounding
+  box, hold option and hover between the anchor and the glyph's
+  outline.
+
 ## Defaults
 
 If you want to change a default, do it with code using these keys until a window is ready:
