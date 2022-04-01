@@ -706,74 +706,66 @@ class NearestPointsPointPen(AbstractPointPen):
 
     def __init__(self):
         self.onCurvePoints = []
-        self.offCurvePoints = []
-        self.searchString = None
+        self.contourOnCurveCounts = {}
+        self._currentContour = 0
+        self._pointIndex = 0
 
     def beginPath(self, **kwargs):
         pass
 
     def endPath(self, **kwargs):
-        pass
+        self.contourOnCurveCounts[self._currentContour] = self._pointIndex
+        self._currentContour += 1
+        self._pointIndex = 0
 
     def addComponent(self, **kwargs):
         pass
 
     def addPoint(self, pt, segmentType=None, **kwargs):
-        if segmentType is None:
-            self.offCurvePoints.append(pt)
-        else:
-            self.onCurvePoints.append(pt)
+        if segmentType is not None:
+            self.onCurvePoints.append((self._currentContour, self._pointIndex, pt))
+            self._pointIndex += 1
 
     def find(self, glyph, location):
-        # get the sequence of points for
-        # eliminating point1-point2 sequences.
-        if self.searchString is None:
-            l = []
-            for x, y in self.onCurvePoints:
-                l.append(_formatCoordinateForSearching(x, y))
-            if l:
-                l.append(l[0])
-            self.searchString = " ".join(l)
-        angleRoundingIncrement = 10
         collinearityTolerance = 0.2
         rightAngleTolerance = 20
         # calculate angle and distance from
         # location to all points.
         points = []
-        for point in self.onCurvePoints:
+        for contourIndex, pointIndex, point in self.onCurvePoints:
             angle = bezierTools.calculateAngle(*sorted((location, point)))
             angle = normalizeAngle(angle)
+            # eliminate wonky angles now
+            if getRightAngleVariance(angle, rightAngleTolerance) is None:
+                continue
             distance = bezierTools.distanceFromPointToPoint(point, location)
-            points.append((angle, distance, point))
+            points.append((angle, distance, contourIndex, pointIndex, point))
         if len(points) < 2:
             return
-        # test all combinations and
-        # filter combinations that
-        # don't meet various criteria.
+        # test all combinations and filter combinations
+        # that don't meet various criteria. the filters
+        # should be organized from least to most expensive.
         tested = set()
         candidates = []
-        for angle1, distance1, point1 in nearest:
-            for angle2, distance2, point2 in nearest:
+        for angle1, distance1, contourIndex1, pointIndex1, point1 in points:
+            for angle2, distance2, contourIndex2, pointIndex2, point2 in points:
                 if point1 == point2:
                     continue
                 # already tested
                 k = tuple(sorted((point1, point2)))
                 if k in tested:
                     continue
-                # if point1 is immediately followed by
-                # point2, skip. this is better handled
-                # by the segment measurements.
-                s = " ".join((
-                    _formatCoordinateForSearching(*point1),
-                    _formatCoordinateForSearching(*point2)
-                ))
-                if s in self.searchString:
-                    continue
-                s = " ".join((
-                    _formatCoordinateForSearching(*point2),
-                    _formatCoordinateForSearching(*point1)
-                ))
-                if s in self.searchString:
+                # if point1 and point2 are on the same
+                # contour and they are next to each
+                # other sequentially, skip.
+                if contourIndex1 == contourIndex2:
+                    if abs(pointIndex1 - pointIndex2) == 1:
+                        continue
+                # if the location is not roughly in the middle
+                # of point1 and point2, skip.
+                totalEstimatedDistance = distance1 + distance2
+                t = distance1 / totalEstimatedDistance
+                if t < 0.35 or t > 0.65:
                     continue
                 # if point1 - location - point2 are not
                 # relatively collinear, skip.
@@ -790,6 +782,14 @@ class NearestPointsPointPen(AbstractPointPen):
                 if collinearity > collinearityTolerance:
                     continue
                 # if the line between point1 and point2
+                # is not close to a right angle, skip.
+                angle = bezierTools.calculateAngle(point1, point2)
+                angle = normalizeAngle(angle)
+                angleVariation = getRightAngleVariance(angle, rightAngleTolerance)
+                if angleVariation is None:
+                    continue
+                angleVariation = round(angleVariation, -1)
+                # if the line between point1 and point2
                 # intersects a line in the glyph, skip.
                 line = ((x1, y1), (x3, y3))
                 intersections = tools.IntersectGlyphWithLine(
@@ -803,26 +803,8 @@ class NearestPointsPointPen(AbstractPointPen):
                         intersections.remove(point)
                 if intersections:
                     continue
-                # if the line between point1 and point2
-                # is not close to a right angle, skip.
-                angle = bezierTools.calculateAngle(point1, point2)
-                angle = normalizeAngle(angle)
-                if angle <= rightAngleTolerance:
-                    angleVariation = angle
-                elif angle >= (90 - rightAngleTolerance) and angle <= (90 + rightAngleTolerance):
-                    angleVariation = abs(90 - angle)
-                elif angle >= (180 - rightAngleTolerance) and angle <= (180 + rightAngleTolerance):
-                    angleVariation = abs(180 - angle)
-                elif angle >= (270 - rightAngleTolerance) and angle <= (270 + rightAngleTolerance):
-                    angleVariation = abs(270 - angle)
-                elif angle >= (360 - rightAngleTolerance):
-                    angleVariation = 360 - angle
-                else:
-                    continue
-                angleVariation = round(angleVariation, -1)
-                angleVariation = 0
+                # store
                 distance = bezierTools.distanceFromPointToPoint(point1, point2)
-                distance = int(round(distance))
                 candidates.append((angleVariation, distance, (point1, point2)))
         if not candidates:
             return
@@ -850,6 +832,19 @@ def roundTo(value, multiple):
     value = int(round(value / float(multiple))) * multiple
     return value
 
+def getRightAngleVariance(angle, tolerance):
+    angleVariation = None
+    if angle <= tolerance:
+        angleVariation = angle
+    elif angle >= (90 - tolerance) and angle <= (90 + tolerance):
+        angleVariation = abs(90 - angle)
+    elif angle >= (180 - tolerance) and angle <= (180 + tolerance):
+        angleVariation = abs(180 - angle)
+    elif angle >= (270 - tolerance) and angle <= (270 + tolerance):
+        angleVariation = abs(270 - angle)
+    elif angle >= (360 - tolerance):
+        angleVariation = 360 - angle
+    return angleVariation
 
 # Segment Matching
 # ----------------
