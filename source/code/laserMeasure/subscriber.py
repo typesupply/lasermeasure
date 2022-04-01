@@ -58,6 +58,8 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             location="foreground",
             clear=True
         )
+        # text
+        self.measurementsTextLayer = self.containerForeground.appendTextLineSublayer()
         # outline
         self.outlineBackground = self.containerBackground.appendBaseSublayer(
             visible=False
@@ -67,7 +69,6 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         )
         self.outlineWidthLayer = self.outlineBackground.appendLineSublayer()
         self.outlineHeightLayer = self.outlineBackground.appendLineSublayer()
-        self.outlineTextLayer = self.outlineForeground.appendTextLineSublayer()
         # segment
         self.segmentBackground = self.containerBackground.appendBaseSublayer(
             visible=False
@@ -77,7 +78,6 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         )
         self.segmentMatchHighlightLayer = self.segmentBackground.appendPathSublayer()
         self.segmentHighlightLayer = self.segmentBackground.appendPathSublayer()
-        self.segmentTextLayer = self.segmentForeground.appendTextLineSublayer()
         # handle
         self.handleBackground = self.containerBackground.appendBaseSublayer(
             visible=False
@@ -87,7 +87,6 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         )
         self.handleMatchHighlightLayer = self.handleBackground.appendPathSublayer()
         self.handleHighlightLayer = self.handleBackground.appendPathSublayer()
-        self.handleTextLayer = self.handleForeground.appendTextLineSublayer()
         # points
         self.pointBackground = self.containerBackground.appendBaseSublayer(
             visible=False
@@ -96,7 +95,6 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             visible=False
         )
         self.pointLineLayer = self.pointBackground.appendLineSublayer()
-        self.pointTextLayer = self.pointForeground.appendTextLineSublayer()
         # anchor
         self.anchorBackground = self.containerBackground.appendBaseSublayer(
             visible=False
@@ -106,7 +104,6 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         )
         self.anchorWidthLayer = self.anchorBackground.appendLineSublayer()
         self.anchorHeightLayer = self.anchorBackground.appendLineSublayer()
-        self.anchorTextLayer = self.anchorForeground.appendTextLineSublayer()
         # go
         self.loadDefaults()
 
@@ -145,22 +142,18 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             figureStyle="regular"
         )
         # populate
+        self.measurementsTextLayer.setPropertiesByName(textAttributes)
         self.outlineWidthLayer.setPropertiesByName(lineAttributes)
         self.outlineHeightLayer.setPropertiesByName(lineAttributes)
-        self.outlineTextLayer.setPropertiesByName(textAttributes)
         self.segmentMatchHighlightLayer.setPropertiesByName(highlightAttributes)
         self.segmentMatchHighlightLayer.setStrokeColor(matchColor)
         self.segmentHighlightLayer.setPropertiesByName(highlightAttributes)
-        self.segmentTextLayer.setPropertiesByName(textAttributes)
         self.handleMatchHighlightLayer.setPropertiesByName(highlightAttributes)
         self.handleMatchHighlightLayer.setStrokeColor(matchColor)
         self.handleHighlightLayer.setPropertiesByName(highlightAttributes)
-        self.handleTextLayer.setPropertiesByName(textAttributes)
         self.pointLineLayer.setPropertiesByName(lineAttributes)
-        self.pointTextLayer.setPropertiesByName(textAttributes)
         self.anchorWidthLayer.setPropertiesByName(lineAttributes)
         self.anchorHeightLayer.setPropertiesByName(lineAttributes)
-        self.anchorTextLayer.setPropertiesByName(textAttributes)
 
     def destroy(self):
         self.containerBackground.clearSublayers()
@@ -350,9 +343,9 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
                 with self.anchorHeightLayer.propertyGroup():
                     self.anchorHeightLayer.setStartPoint((ax, ay))
                     self.anchorHeightLayer.setEndPoint((ax, hitY))
-                with self.anchorTextLayer.propertyGroup():
-                    self.anchorTextLayer.setPosition((ax, ay))
-                    self.anchorTextLayer.setText(formatWidthHeightString(width, height))
+                with self.measurementsTextLayer.propertyGroup():
+                    self.measurementsTextLayer.setPosition((ax, ay))
+                    self.measurementsTextLayer.setText(formatWidthHeightString(width, height))
                 return True
 
     def measureHandles(self,
@@ -364,7 +357,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             point,
             glyph.getRepresentation(extensionID + "handlesAsLines"),
             self.handleHighlightLayer,
-            self.handleTextLayer
+            self.measurementsTextLayer
         )
         if hit:
             points = hit[1]
@@ -401,7 +394,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             point,
             glyph,
             self.segmentHighlightLayer,
-            self.segmentTextLayer
+            self.measurementsTextLayer
         )
         if hit:
             segmentType, segmentPoints = hit
@@ -452,8 +445,8 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         height = int(round(abs(y1 - y2)))
         self.pointLineLayer.setStartPoint(point1)
         self.pointLineLayer.setEndPoint(point2)
-        self.pointTextLayer.setPosition(point)
-        self.pointTextLayer.setText(formatWidthHeightString(width, height))
+        self.measurementsTextLayer.setPosition(point)
+        self.measurementsTextLayer.setText(formatWidthHeightString(width, height))
         return True
 
     def measureOutline(self,
@@ -511,9 +504,9 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         with self.outlineHeightLayer.propertyGroup():
             self.outlineHeightLayer.setStartPoint((x, y1))
             self.outlineHeightLayer.setEndPoint((x, y1 + height))
-        with self.outlineTextLayer.propertyGroup():
-            self.outlineTextLayer.setPosition((x, y))
-            self.outlineTextLayer.setText(formatWidthHeightString(width, height))
+        with self.measurementsTextLayer.propertyGroup():
+            self.measurementsTextLayer.setPosition((x, y))
+            self.measurementsTextLayer.setText(formatWidthHeightString(width, height))
         return True
 
 # -------
@@ -606,7 +599,6 @@ def measureSegmentsAndHandles(
     found = selector.segmentStrokeHitByPoint_(point, 5)
     if not found:
         highlightLayer.setVisible(False)
-        textLayer.setVisible(False)
         return
     contourIndex, segmentIndex, nsSegment = found
     contour = glyph[contourIndex]
