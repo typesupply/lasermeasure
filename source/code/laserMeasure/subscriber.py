@@ -26,7 +26,7 @@ extensionID = "com.typesupply.LaserMeasure."
 defaults = {
     extensionID + "triggerCharacter" : "d",
     extensionID + "baseColor" : (0, 0.3, 1, 0.8),
-    extensionID + "matchColor" : (1, 1, 0, 0.5),
+    extensionID + "matchColor" : (1, 0.7, 0, 0.9),
     extensionID + "highlightStrokeWidth" : 10,
     extensionID + "highlightStrokeAlpha" : 0.2,
     extensionID + "measurementTextSize" : 12,
@@ -45,6 +45,20 @@ def getDefault(key):
 class LaserMeasureSubscriber(subscriber.Subscriber):
 
     debug = False
+
+    # Display Structure
+    # -----------------
+    #
+    # There are two containers:
+    # - one for background stuff
+    # - one for foreground stuff
+    #
+    # Each measurement type has its own layer
+    # for displaying its data. Text is compiled
+    # on one layer with sublayers that are
+    # positioned relative to each other and
+    # the super.
+
 
     def build(self):
         window = self.getGlyphEditor()
@@ -196,12 +210,14 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.containerForeground.setVisible(False)
         self.clearText()
 
-    def glyphEditorDidMouseDown(self, info):
-        self.wantsMeasurements = False
-        self.hideLayers()
-        setCursorMode(None)
+    # Events
+    # ------
 
     wantsMeasurements = False
+    currentDisplayFocalPoint = None
+    currentMeasurements = None
+    currentSelectionMeasurements = None
+    currentMatchNames = None
 
     def glyphEditorDidKeyDown(self, info):
         deviceState = info["deviceState"]
@@ -220,12 +236,17 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
                 position = view._getMousePosition()
                 position = view._converPointFromViewToGlyphSpace(position)
                 position = (position.x, position.y)
-                if position != self._currentTextPosition:
-                    self._currentTextPosition = position
+                if position != self.currentDisplayFocalPoint:
+                    self.currentDisplayFocalPoint = position
                     self.updateText()
             setCursorMode("searching")
 
     def glyphEditorDidKeyUp(self, info):
+        self.wantsMeasurements = False
+        self.hideLayers()
+        setCursorMode(None)
+
+    def glyphEditorDidMouseDown(self, info):
         self.wantsMeasurements = False
         self.hideLayers()
         setCursorMode(None)
@@ -240,9 +261,9 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             return
         deviceState = info["deviceState"]
         point = tuple(info["locationInGlyph"])
-        self._currentTextPosition = point
-        self._currentMatches = None
-        self._currentMeasurements = None
+        self.currentDisplayFocalPoint = point
+        self.currentMeasurements = None
+        self.currentMatchNames = None
         anchorState = False
         handleState = False
         segmentState = False
@@ -304,25 +325,28 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             yAfterFallback = max((yAfterFallback, y))
         return xBeforeFallback, yBeforeFallback, xAfterFallback, yAfterFallback
 
+    # Text
+    # ----
+
     def clearText(self):
-        self._currentTextPosition = None
-        self._currentMeasurements = None
-        self._currentSelectionMeasurements = None
-        self._currentMatches = None
+        self.currentDisplayFocalPoint = None
+        self.currentMeasurements = None
+        self.currentSelectionMeasurements = None
+        self.currentMatchNames = None
 
     def updateText(self):
         offset = 7
-        if self._currentTextPosition is not None:
-            x, y = self._currentTextPosition
+        if self.currentDisplayFocalPoint is not None:
+            x, y = self.currentDisplayFocalPoint
             x += offset
             y -= offset
             self.textLayer.setPosition((x, y))
         haveMeasurements = False
         haveSelection = False
         haveMatches = False
-        if self._currentMeasurements:
+        if self.currentMeasurements:
             self.measurementsTextLayer.setText(
-                formatWidthHeightString(*self._currentMeasurements)
+                formatWidthHeightString(*self.currentMeasurements)
             )
             position = (
                 dict(
@@ -334,9 +358,9 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             )
             self.measurementsTextLayer.setPosition(position)
             haveMeasurements = True
-        if self._currentSelectionMeasurements:
+        if self.currentSelectionMeasurements:
             self.selectionMeasurementsTextLayer.setText(
-                formatWidthHeightString(*self._currentSelectionMeasurements)
+                formatWidthHeightString(*self.currentSelectionMeasurements)
             )
             position = (
                 dict(
@@ -354,9 +378,9 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
                 y["offset"] = -offset
             self.selectionMeasurementsTextLayer.setPosition(position)
             haveSelection = True
-        if self._currentMatches:
+        if self.currentMatchNames:
             self.matchesTextLayer.setText(
-                formatWidthHeightString(*self._currentSelectionMeasurements)
+                "\n".join(sorted(self.currentMatchNames))
             )
             position = (
                 dict(
@@ -384,6 +408,20 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         if not self.containerForeground.getVisible():
             self.containerForeground.setVisible(True)
 
+    # Measurements
+    # ------------
+    #
+    # These perform measurements and update the contents
+    # of their layers as needed. (These do not update text
+    # because it is more effecient to do that at the end.)
+    # Each of these must return True if they found something
+    # to measure. This will be used to stop further searching
+    # and know which layers should be visible.
+    #
+    # These should place the measurements they find at
+    # self.currentMeasurements and  the text updating
+    # system will pull and format the data as needed.
+
     def measureSelection(self,
             glyph,
             deviceState
@@ -403,9 +441,9 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         width = xMax - xMin
         height = yMax - yMin
         measurements = (width, height)
-        if measurements == self._currentSelectionMeasurements:
+        if measurements == self.currentSelectionMeasurements:
             return
-        self._currentSelectionMeasurements = (width, height)
+        self.currentSelectionMeasurements = (width, height)
         return True
 
     def measureAnchors(self,
@@ -500,8 +538,8 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
                     self.anchorHeightLayer.setStartPoint((ax, ay))
                     self.anchorHeightLayer.setEndPoint((ax, hitY))
                 with self.measurementsTextLayer.propertyGroup():
-                    self._currentTextPosition = (ax, ay)
-                    self._currentMeasurements = (width, height)
+                    self.currentDisplayFocalPoint = (ax, ay)
+                    self.currentMeasurements = (width, height)
                 return True
 
     def measureHandles(self,
@@ -521,7 +559,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
                 glyph
             )
             self.handleMatchHighlightLayer.setVisible(True)
-            self._currentMeasurements = measurements
+            self.currentMeasurements = measurements
             return True
         else:
             self.handleMatchHighlightLayer.setVisible(False)
@@ -559,7 +597,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
                 glyph
             )
             self.segmentMatchHighlightLayer.setVisible(True)
-            self._currentMeasurements = measurements
+            self.currentMeasurements = measurements
             return True
         else:
             self.segmentMatchHighlightLayer.setVisible(False)
@@ -601,7 +639,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         height = int(round(abs(y1 - y2)))
         self.pointLineLayer.setStartPoint(point1)
         self.pointLineLayer.setEndPoint(point2)
-        self._currentMeasurements = (width, height)
+        self.currentMeasurements = (width, height)
         return True
 
     def measureOutline(self,
@@ -660,7 +698,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             self.outlineHeightLayer.setStartPoint((x, y1))
             self.outlineHeightLayer.setEndPoint((x, y1 + height))
         with self.measurementsTextLayer.propertyGroup():
-            self._currentMeasurements = (width, height)
+            self.currentMeasurements = (width, height)
         return True
 
 # -------
@@ -1167,7 +1205,7 @@ def main():
     subscriber.registerGlyphEditorSubscriber(LaserMeasureSubscriber)
 
 if __name__ == "__main__":
-    if AppKit.NSUserName() == "tal":
+    if AppKit.NSUserName() in ("tal", "talleming"):
         for key in defaults.keys():
             removeExtensionDefault(key)
         registerExtensionDefaults(defaults)
