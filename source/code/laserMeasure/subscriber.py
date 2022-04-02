@@ -23,6 +23,7 @@ from mojo import UI
 
 
 extensionID = "com.typesupply.LaserMeasure."
+
 defaults = {
     extensionID + "triggerCharacter" : "d",
     extensionID + "baseColor" : (0, 0.3, 1, 0.8),
@@ -30,6 +31,14 @@ defaults = {
     extensionID + "highlightStrokeWidth" : 10,
     extensionID + "highlightStrokeAlpha" : 0.2,
     extensionID + "measurementTextSize" : 12,
+    extensionID + "tests.selection" : True,
+    extensionID + "tests.segments" : True,
+    extensionID + "tests.segmentMatches" : True,
+    extensionID + "tests.offCurves" : True,
+    extensionID + "tests.offCurveMatches" : True,
+    extensionID + "tests.points" : True,
+    extensionID + "tests.general" : True,
+    extensionID + "tests.anchors" : True,
 }
 
 registerExtensionDefaults(defaults)
@@ -138,13 +147,22 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
 
     def loadDefaults(self):
         # load
+        self.triggerCharacter = getDefault("triggerCharacter")
+        self.doTestSelection = getDefault("tests.selection")
+        self.doTestSegments = getDefault("tests.segments")
+        self.doTestSegmentMatches = getDefault("tests.segmentMatches")
+        self.doTestOffCurves = getDefault("tests.offCurves")
+        self.doTestOffCurveMatches = getDefault("tests.offCurveMatches")
+        self.doTestPoints = getDefault("tests.points")
+        self.doTestGeneral = getDefault("tests.general")
+        self.doTestAnchors = getDefault("tests.anchors")
         mainColor = getDefault("baseColor")
         backgroundColor = UI.getDefault("glyphViewBackgroundColor")
         matchColor = getDefault("matchColor")
         textSize = getDefault("measurementTextSize")
         highlightAlpha = getDefault("highlightStrokeAlpha")
         highlightWidth = getDefault("highlightStrokeWidth")
-        self.triggerCharacter = getDefault("triggerCharacter")
+        # create colors
         r, g, b, a = mainColor
         mainHighlightColor = (r, g, b, a * highlightAlpha)
         r, g, b, a = matchColor
@@ -226,19 +244,20 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         else:
             self.wantsMeasurements = True
             glyph = info["glyph"]
-            selectionState = self.measureSelection(
-                glyph,
-                deviceState
-            )
-            if selectionState:
-                editor = info["glyphEditor"]
-                view = editor.getGlyphView()
-                position = view._getMousePosition()
-                position = view._converPointFromViewToGlyphSpace(position)
-                position = (position.x, position.y)
-                if position != self.currentDisplayFocalPoint:
-                    self.currentDisplayFocalPoint = position
-                    self.updateText()
+            if self.doTestSelection:
+                selectionState = self.measureSelection(
+                    glyph,
+                    deviceState
+                )
+                if selectionState:
+                    editor = info["glyphEditor"]
+                    view = editor.getGlyphView()
+                    position = view._getMousePosition()
+                    position = view._converPointFromViewToGlyphSpace(position)
+                    position = (position.x, position.y)
+                    if position != self.currentDisplayFocalPoint:
+                        self.currentDisplayFocalPoint = position
+                        self.updateText()
             setCursorMode("searching")
 
     def glyphEditorDidKeyUp(self, info):
@@ -270,20 +289,32 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         pointState = False
         outlineState = False
         cursorMode = "searching"
-        if self.measureAnchors(point, glyph, deviceState):
-            anchorState = True
-            cursorMode = "hit"
-        elif self.measureHandles(point, glyph, deviceState):
-            handleState = True
-            cursorMode = "hit"
-        elif self.measureSegments(point, glyph, deviceState):
-            segmentState = True
-            cursorMode = "hit"
-        elif self.measurePoints(point, glyph, deviceState):
-            pointState = True
-            cursorMode = "hit"
-        elif self.measureOutline(point, glyph, deviceState):
-            outlineState = True
+        while 1:
+            if self.doTestAnchors:
+                if self.measureAnchors(point, glyph, deviceState):
+                    anchorState = True
+                    cursorMode = "hit"
+                    break
+            if self.doTestOffCurves:
+                if self.measureHandles(point, glyph, deviceState):
+                    handleState = True
+                    cursorMode = "hit"
+                    break
+            if self.doTestSegments:
+                if self.measureSegments(point, glyph, deviceState):
+                    segmentState = True
+                    cursorMode = "hit"
+                    break
+            if self.doTestPoints:
+                if self.measurePoints(point, glyph, deviceState):
+                    pointState = True
+                    cursorMode = "hit"
+                    break
+            if self.doTestGeneral:
+                if self.measureOutline(point, glyph, deviceState):
+                    outlineState = True
+                    break
+            break
         setCursorMode(cursorMode)
         self.anchorBackground.setVisible(anchorState)
         self.anchorForeground.setVisible(anchorState)
@@ -552,6 +583,9 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             glyph.getRepresentation(extensionID + "handlesAsLines"),
             self.handleHighlightLayer
         )
+        if not self.doTestOffCurveMatches:
+            self.handleMatchHighlightLayer.setVisible(False)
+            return bool(hit)
         if hit:
             segmentType, points, measurements = hit
             self._findMatchingHandles(
@@ -589,6 +623,9 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             glyph,
             self.segmentHighlightLayer
         )
+        if not self.doTestSegmentMatches:
+            self.segmentMatchHighlightLayer.setVisible(False)
+            return bool(hit)
         if hit:
             segmentType, segmentPoints, measurements = hit
             self._findMatchingSegments(
