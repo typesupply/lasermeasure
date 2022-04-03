@@ -3,7 +3,16 @@
 <plist version="1.0">
 <dict>
 	<key>addToMenu</key>
-	<array/>
+	<array>
+		<dict>
+			<key>path</key>
+			<string>menu_showSettings.py</string>
+			<key>preferredName</key>
+			<string>Edit Settings</string>
+			<key>shortKey</key>
+			<string></string>
+		</dict>
+	</array>
 	<key>developer</key>
 	<string>Type Supply</string>
 	<key>developerURL</key>
@@ -21,7 +30,7 @@
 	<key>requiresVersionMinor</key>
 	<string>1</string>
 	<key>timeStamp</key>
-	<real>1648689079.0230489</real>
+	<real>1648995815.1962109</real>
 	<key>version</key>
 	<string>0.1</string>
 </dict>

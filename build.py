@@ -8,11 +8,17 @@ developer = "Type Supply"
 developerURL = "http://typesupply.com"
 roboFontVersion = "4.1"
 pycOnly = False
-menuItems = []
+menuItems = [
+    dict(
+        path="menu_showSettings.py",
+        preferredName="Edit Settings",
+        shortKey=""
+    ),
+]
 
 mainScript = "main.py"
 launchAtStartUp = True
-installAfterBuild = False
+installAfterBuild = True
 
 # ----------------------
 # Don't edit below here.

@@ -22,21 +22,39 @@ from mojo.extensions import (
 from mojo import UI
 
 
-extensionID = "com.typesupply.LaserMeasure."
+extensionID = "com.typesupply.LaserMeasure"
+extensionKeyStub = extensionID + "."
+
+# --------
+# Defaults
+# --------
+
 defaults = {
-    extensionID + "triggerCharacter" : "d",
-    extensionID + "baseColor" : (0, 0.3, 1, 0.8),
-    extensionID + "matchColor" : (1, 1, 0, 0.5),
-    extensionID + "highlightStrokeWidth" : 10,
-    extensionID + "highlightStrokeAlpha" : 0.2,
-    extensionID + "measurementTextSize" : 12,
+    extensionKeyStub + "triggerCharacter" : "d",
+    extensionKeyStub + "baseColor" : (0, 0.3, 1, 0.8),
+    extensionKeyStub + "matchColor" : (1, 0.7, 0, 0.9),
+    extensionKeyStub + "highlightStrokeWidth" : 10,
+    extensionKeyStub + "highlightOpacity" : 0.2,
+    extensionKeyStub + "measurementTextSize" : 12,
+    extensionKeyStub + "testSelection" : True,
+    extensionKeyStub + "testSegments" : True,
+    extensionKeyStub + "testSegmentMatches" : True,
+    extensionKeyStub + "testOffCurves" : True,
+    extensionKeyStub + "testOffCurveMatches" : True,
+    extensionKeyStub + "testPoints" : True,
+    extensionKeyStub + "testGeneral" : True,
+    extensionKeyStub + "testAnchors" : True,
 }
 
 registerExtensionDefaults(defaults)
 
-def getDefault(key):
-    key = extensionID + key
+def internalGetDefault(key):
+    key = extensionKeyStub + key
     return getExtensionDefault(key)
+
+def internalSetDefault(key, value):
+    key = extensionKeyStub + key
+    setExtensionDefault(key, value)
 
 # ----------
 # Subscriber
@@ -46,17 +64,46 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
 
     debug = False
 
+    # Display Structure
+    # -----------------
+    #
+    # There are two containers:
+    # - one for background stuff
+    # - one for foreground stuff
+    #
+    # Each measurement type has its own layer
+    # for displaying its data. Text is compiled
+    # on one layer with sublayers that are
+    # positioned relative to each other and
+    # the super.
+
     def build(self):
         window = self.getGlyphEditor()
         self.containerBackground = window.extensionContainer(
-            identifier=extensionID + "background",
+            identifier=extensionKeyStub + "background",
             location="background",
             clear=True
         )
         self.containerForeground = window.extensionContainer(
-            identifier=extensionID + "foreground",
+            identifier=extensionKeyStub + "foreground",
             location="foreground",
             clear=True
+        )
+        # text
+        self.textLayer = self.containerForeground.appendBaseSublayer(
+            visible=True
+        )
+        self.measurementsTextLayer = self.textLayer.appendTextLineSublayer(
+            visible=False,
+            name="measurements"
+        )
+        self.selectionMeasurementsTextLayer = self.textLayer.appendTextLineSublayer(
+            visible=False,
+            name="selection"
+        )
+        self.matchesTextLayer = self.textLayer.appendTextLineSublayer(
+            visible=False,
+            name="matches"
         )
         # outline
         self.outlineBackground = self.containerBackground.appendBaseSublayer(
@@ -67,7 +114,6 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         )
         self.outlineWidthLayer = self.outlineBackground.appendLineSublayer()
         self.outlineHeightLayer = self.outlineBackground.appendLineSublayer()
-        self.outlineTextLayer = self.outlineForeground.appendTextLineSublayer()
         # segment
         self.segmentBackground = self.containerBackground.appendBaseSublayer(
             visible=False
@@ -77,7 +123,6 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         )
         self.segmentMatchHighlightLayer = self.segmentBackground.appendPathSublayer()
         self.segmentHighlightLayer = self.segmentBackground.appendPathSublayer()
-        self.segmentTextLayer = self.segmentForeground.appendTextLineSublayer()
         # handle
         self.handleBackground = self.containerBackground.appendBaseSublayer(
             visible=False
@@ -87,7 +132,6 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         )
         self.handleMatchHighlightLayer = self.handleBackground.appendPathSublayer()
         self.handleHighlightLayer = self.handleBackground.appendPathSublayer()
-        self.handleTextLayer = self.handleForeground.appendTextLineSublayer()
         # points
         self.pointBackground = self.containerBackground.appendBaseSublayer(
             visible=False
@@ -96,7 +140,6 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             visible=False
         )
         self.pointLineLayer = self.pointBackground.appendLineSublayer()
-        self.pointTextLayer = self.pointForeground.appendTextLineSublayer()
         # anchor
         self.anchorBackground = self.containerBackground.appendBaseSublayer(
             visible=False
@@ -106,76 +149,113 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         )
         self.anchorWidthLayer = self.anchorBackground.appendLineSublayer()
         self.anchorHeightLayer = self.anchorBackground.appendLineSublayer()
-        self.anchorTextLayer = self.anchorForeground.appendTextLineSublayer()
+        # register for defaults change
+        events.addObserver(
+            self,
+            "extensionDefaultsChanged",
+            extensionID + ".defaultsChanged"
+        )
         # go
+        self.clearText()
         self.loadDefaults()
 
     def loadDefaults(self):
         # load
-        baseColor = getDefault("baseColor")
-        textColor = UI.getDefault("glyphViewBackgroundColor")
-        matchColor = getDefault("matchColor")
-        textSize = getDefault("measurementTextSize")
-        highlightAlpha = getDefault("highlightStrokeAlpha")
-        highlightWidth = getDefault("highlightStrokeWidth")
-        self.triggerCharacter = getDefault("triggerCharacter")
+        self.triggerCharacter = internalGetDefault("triggerCharacter")
+        self.doTestSelection = internalGetDefault("testSelection")
+        self.doTestSegments = internalGetDefault("testSegments")
+        self.doTestSegmentMatches = internalGetDefault("testSegmentMatches")
+        self.doTestOffCurves = internalGetDefault("testOffCurves")
+        self.doTestOffCurveMatches = internalGetDefault("testOffCurveMatches")
+        self.doTestPoints = internalGetDefault("testPoints")
+        self.doTestGeneral = internalGetDefault("testGeneral")
+        self.doTestAnchors = internalGetDefault("testAnchors")
+        mainColor = internalGetDefault("baseColor")
+        backgroundColor = UI.getDefault("glyphViewBackgroundColor")
+        matchColor = internalGetDefault("matchColor")
+        textSize = internalGetDefault("measurementTextSize")
+        highlightOpacity = internalGetDefault("highlightOpacity")
+        highlightWidth = internalGetDefault("highlightStrokeWidth")
         # build
-        r, g, b, a = baseColor
-        highlightColor = (r, g, b, a * highlightAlpha)
         lineAttributes = dict(
-            strokeColor=baseColor,
+            strokeColor=mainColor,
             strokeWidth=1
         )
         highlightAttributes = dict(
             fillColor=None,
-            strokeColor=highlightColor,
+            strokeColor=mainColor,
             strokeWidth=highlightWidth,
-            strokeCap="round"
+            strokeCap="round",
+            opacity=highlightOpacity
         )
         textAttributes = dict(
-            backgroundColor=baseColor,
-            fillColor=textColor,
+            backgroundColor=mainColor,
+            fillColor=backgroundColor,
             padding=(6, 3),
             cornerRadius=5,
-            offset=(7, -7),
             horizontalAlignment="left",
             verticalAlignment="top",
             pointSize=textSize,
             weight="bold",
             figureStyle="regular"
         )
+        measurementTextAttributes = dict(textAttributes)
+        measurementTextAttributes.update(dict(
+        ))
+        selectionMeasurementsTextAttributes = dict(textAttributes)
+        selectionMeasurementsTextAttributes.update(dict(
+            borderColor=mainColor,
+            backgroundColor=backgroundColor,
+            fillColor=mainColor,
+            borderWidth=1
+        ))
+        matchesTextAttributes = dict(textAttributes)
+        matchesTextAttributes.update(dict(
+            backgroundColor=matchColor
+        ))
         # populate
+        self.measurementsTextLayer.setPropertiesByName(textAttributes)
+        self.selectionMeasurementsTextLayer.setPropertiesByName(selectionMeasurementsTextAttributes)
+        self.matchesTextLayer.setPropertiesByName(matchesTextAttributes)
         self.outlineWidthLayer.setPropertiesByName(lineAttributes)
         self.outlineHeightLayer.setPropertiesByName(lineAttributes)
-        self.outlineTextLayer.setPropertiesByName(textAttributes)
         self.segmentMatchHighlightLayer.setPropertiesByName(highlightAttributes)
         self.segmentMatchHighlightLayer.setStrokeColor(matchColor)
         self.segmentHighlightLayer.setPropertiesByName(highlightAttributes)
-        self.segmentTextLayer.setPropertiesByName(textAttributes)
         self.handleMatchHighlightLayer.setPropertiesByName(highlightAttributes)
         self.handleMatchHighlightLayer.setStrokeColor(matchColor)
         self.handleHighlightLayer.setPropertiesByName(highlightAttributes)
-        self.handleTextLayer.setPropertiesByName(textAttributes)
         self.pointLineLayer.setPropertiesByName(lineAttributes)
-        self.pointTextLayer.setPropertiesByName(textAttributes)
         self.anchorWidthLayer.setPropertiesByName(lineAttributes)
         self.anchorHeightLayer.setPropertiesByName(lineAttributes)
-        self.anchorTextLayer.setPropertiesByName(textAttributes)
 
     def destroy(self):
         self.containerBackground.clearSublayers()
         self.containerForeground.clearSublayers()
+        events.removeObserver(
+            self,
+            extensionID + ".defaultsChanged"
+        )
 
     def hideLayers(self):
         self.containerBackground.setVisible(False)
         self.containerForeground.setVisible(False)
+        self.clearText()
 
-    def glyphEditorDidMouseDown(self, info):
-        self.wantsMeasurements = False
-        self.hideLayers()
-        setCursorMode(None)
+    # Events
+    # ------
+
+    def roboFontDidChangePreferences(self, info):
+        self.loadDefaults()
+
+    def extensionDefaultsChanged(self, event):
+        self.loadDefaults()
 
     wantsMeasurements = False
+    currentDisplayFocalPoint = None
+    currentMeasurements = None
+    currentSelectionMeasurements = None
+    currentMatchNames = None
 
     def glyphEditorDidKeyDown(self, info):
         deviceState = info["deviceState"]
@@ -183,6 +263,21 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             self.wantsMeasurements = False
         else:
             self.wantsMeasurements = True
+            glyph = info["glyph"]
+            if self.doTestSelection:
+                selectionState = self.measureSelection(
+                    glyph,
+                    deviceState
+                )
+                if selectionState:
+                    editor = info["glyphEditor"]
+                    view = editor.getGlyphView()
+                    position = view._getMousePosition()
+                    position = view._converPointFromViewToGlyphSpace(position)
+                    position = (position.x, position.y)
+                    if position != self.currentDisplayFocalPoint:
+                        self.currentDisplayFocalPoint = position
+                        self.updateText()
             setCursorMode("searching")
 
     def glyphEditorDidKeyUp(self, info):
@@ -190,35 +285,56 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.hideLayers()
         setCursorMode(None)
 
+    def glyphEditorDidMouseDown(self, info):
+        self.wantsMeasurements = False
+        self.hideLayers()
+        setCursorMode(None)
+
     def glyphEditorDidMouseMove(self, info):
         if not self.wantsMeasurements:
             return
+        self.selectionMeasurementsTextLayer.setVisible(False)
         glyph = info["glyph"]
         if not glyph.bounds:
             self.hideLayers()
             return
         deviceState = info["deviceState"]
         point = tuple(info["locationInGlyph"])
+        self.currentDisplayFocalPoint = point
+        self.currentMeasurements = None
+        self.currentMatchNames = None
         anchorState = False
         handleState = False
         segmentState = False
         pointState = False
         outlineState = False
         cursorMode = "searching"
-        if self.measureAnchors(point, glyph, deviceState):
-            anchorState = True
-            cursorMode = "hit"
-        elif self.measureHandles(point, glyph, deviceState):
-            handleState = True
-            cursorMode = "hit"
-        elif self.measureSegments(point, glyph, deviceState):
-            segmentState = True
-            cursorMode = "hit"
-        elif self.measurePoints(point, glyph, deviceState):
-            pointState = True
-            cursorMode = "hit"
-        elif self.measureOutline(point, glyph, deviceState):
-            outlineState = True
+        while 1:
+            if self.doTestAnchors:
+                if self.measureAnchors(point, glyph, deviceState):
+                    anchorState = True
+                    cursorMode = "hit"
+                    break
+            if self.doTestOffCurves:
+                if self.measureHandles(point, glyph, deviceState):
+                    handleState = True
+                    cursorMode = "hit"
+                    break
+            if self.doTestSegments:
+                if self.measureSegments(point, glyph, deviceState):
+                    segmentState = True
+                    cursorMode = "hit"
+                    break
+            if self.doTestPoints:
+                if self.measurePoints(point, glyph, deviceState):
+                    pointState = True
+                    cursorMode = "hit"
+                    break
+            if self.doTestGeneral:
+                if self.measureOutline(point, glyph, deviceState):
+                    outlineState = True
+                    break
+            break
         setCursorMode(cursorMode)
         self.anchorBackground.setVisible(anchorState)
         self.anchorForeground.setVisible(anchorState)
@@ -232,6 +348,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.outlineForeground.setVisible(outlineState)
         self.containerBackground.setVisible(True)
         self.containerForeground.setVisible(True)
+        self.updateText()
 
     def _conditionalRectFallbacks(self, point, glyph, deviceState):
         x, y = point
@@ -258,6 +375,127 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             yBeforeFallback = min((yBeforeFallback, y))
             yAfterFallback = max((yAfterFallback, y))
         return xBeforeFallback, yBeforeFallback, xAfterFallback, yAfterFallback
+
+    # Text
+    # ----
+
+    def clearText(self):
+        self.currentDisplayFocalPoint = None
+        self.currentMeasurements = None
+        self.currentSelectionMeasurements = None
+        self.currentMatchNames = None
+
+    def updateText(self):
+        offset = 7
+        if self.currentDisplayFocalPoint is not None:
+            x, y = self.currentDisplayFocalPoint
+            x += offset
+            y -= offset
+            self.textLayer.setPosition((x, y))
+        haveMeasurements = False
+        haveSelection = False
+        haveMatches = False
+        if self.currentMeasurements:
+            self.measurementsTextLayer.setText(
+                formatWidthHeightString(*self.currentMeasurements)
+            )
+            position = (
+                dict(
+                    point="left"
+                ),
+                dict(
+                    point="top"
+                )
+            )
+            self.measurementsTextLayer.setPosition(position)
+            haveMeasurements = True
+        if self.currentSelectionMeasurements:
+            self.selectionMeasurementsTextLayer.setText(
+                formatWidthHeightString(*self.currentSelectionMeasurements)
+            )
+            position = (
+                dict(
+                    point="left"
+                ),
+                dict(
+                    point="top"
+                )
+            )
+            if haveMeasurements:
+                x, y = position
+                x["relative"] = "measurements"
+                y["relative"] = "measurements"
+                y["relativePoint"] = "bottom"
+                y["offset"] = -offset
+            self.selectionMeasurementsTextLayer.setPosition(position)
+            haveSelection = True
+        if self.currentMatchNames:
+            self.matchesTextLayer.setText(
+                "\n".join(sorted(self.currentMatchNames))
+            )
+            position = (
+                dict(
+                    point="left"
+                ),
+                dict(
+                    point="top"
+                )
+            )
+            if haveMeasurements or haveSelection:
+                x, y = position
+                if haveSelection:
+                    x["relative"] = "selection"
+                    y["relative"] = "selection"
+                else:
+                    x["relative"] = "measurements"
+                    y["relative"] = "measurements"
+                y["relativePoint"] = "bottom"
+                y["offset"] = -offset
+            self.matchesTextLayer.setPosition(position)
+            haveMatches = True
+        self.measurementsTextLayer.setVisible(haveMeasurements)
+        self.selectionMeasurementsTextLayer.setVisible(haveSelection)
+        self.matchesTextLayer.setVisible(haveMatches)
+        if not self.containerForeground.getVisible():
+            self.containerForeground.setVisible(True)
+
+    # Measurements
+    # ------------
+    #
+    # These perform measurements and update the contents
+    # of their layers as needed. (These do not update text
+    # because it is more efficient to do that at the end.)
+    # Each of these must return True if they found something
+    # to measure. This will be used to stop further searching
+    # and know which layers should be visible.
+    #
+    # These should place the measurements they find at
+    # self.currentMeasurements and  the text updating
+    # system will pull and format the data as needed.
+
+    def measureSelection(self,
+            glyph,
+            deviceState
+        ):
+        xValues = set()
+        yValues = set()
+        for contour in glyph.selectedContours:
+            for point in contour.selectedPoints:
+                xValues.add(point.x)
+                yValues.add(point.y)
+        if len(xValues) < 2 and len(yValues) < 2:
+            return
+        xMin = min(xValues)
+        xMax = max(xValues)
+        yMin = min(yValues)
+        yMax = max(yValues)
+        width = xMax - xMin
+        height = yMax - yMin
+        measurements = (width, height)
+        if measurements == self.currentSelectionMeasurements:
+            return
+        self.currentSelectionMeasurements = (width, height)
+        return True
 
     def measureAnchors(self,
             point,
@@ -350,9 +588,9 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
                 with self.anchorHeightLayer.propertyGroup():
                     self.anchorHeightLayer.setStartPoint((ax, ay))
                     self.anchorHeightLayer.setEndPoint((ax, hitY))
-                with self.anchorTextLayer.propertyGroup():
-                    self.anchorTextLayer.setPosition((ax, ay))
-                    self.anchorTextLayer.setText(formatWidthHeightString(width, height))
+                with self.measurementsTextLayer.propertyGroup():
+                    self.currentDisplayFocalPoint = (ax, ay)
+                    self.currentMeasurements = (width, height)
                 return True
 
     def measureHandles(self,
@@ -362,17 +600,20 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         ):
         hit = measureSegmentsAndHandles(
             point,
-            glyph.getRepresentation(extensionID + "handlesAsLines"),
-            self.handleHighlightLayer,
-            self.handleTextLayer
+            glyph.getRepresentation(extensionKeyStub + "handlesAsLines"),
+            self.handleHighlightLayer
         )
+        if not self.doTestOffCurveMatches:
+            self.handleMatchHighlightLayer.setVisible(False)
+            return bool(hit)
         if hit:
-            points = hit[1]
+            segmentType, points, measurements = hit
             self._findMatchingHandles(
                 points,
                 glyph
             )
             self.handleMatchHighlightLayer.setVisible(True)
+            self.currentMeasurements = measurements
             return True
         else:
             self.handleMatchHighlightLayer.setVisible(False)
@@ -384,7 +625,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         layer = self.handleMatchHighlightLayer
         layerPen = merz.MerzPen()
         target = HandleMatcher(points)
-        handles = glyph.getRepresentation(extensionID + "handles")
+        handles = glyph.getRepresentation(extensionKeyStub + "handles")
         for handle in handles:
             if target.compare(handle):
                 layerPen.moveTo(handle[0])
@@ -400,17 +641,20 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         hit = measureSegmentsAndHandles(
             point,
             glyph,
-            self.segmentHighlightLayer,
-            self.segmentTextLayer
+            self.segmentHighlightLayer
         )
+        if not self.doTestSegmentMatches:
+            self.segmentMatchHighlightLayer.setVisible(False)
+            return bool(hit)
         if hit:
-            segmentType, segmentPoints = hit
+            segmentType, segmentPoints, measurements = hit
             self._findMatchingSegments(
                 segmentType,
                 segmentPoints,
                 glyph
             )
             self.segmentMatchHighlightLayer.setVisible(True)
+            self.currentMeasurements = measurements
             return True
         else:
             self.segmentMatchHighlightLayer.setVisible(False)
@@ -423,7 +667,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         layer = self.segmentMatchHighlightLayer
         layerPen = merz.MerzPen()
         target = SegmentMatcher(segmentType, segmentPoints)
-        segments = glyph.getRepresentation(extensionID + "segments")
+        segments = glyph.getRepresentation(extensionKeyStub + "segments")
         for otherSegmentType, otherSegmentPoints in segments:
             if target.compare(otherSegmentType, otherSegmentPoints):
                 layerPen.moveTo(otherSegmentPoints[0])
@@ -441,8 +685,8 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             glyph,
             deviceState
         ):
-        pen = glyph.getRepresentation(extensionID + "nearestPointSearcher")
-        points = pen.find(point)
+        pen = glyph.getRepresentation(extensionKeyStub + "nearestPointSearcher")
+        points = pen.find(glyph, point)
         if not points:
             return
         point1, point2 = points
@@ -452,8 +696,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         height = int(round(abs(y1 - y2)))
         self.pointLineLayer.setStartPoint(point1)
         self.pointLineLayer.setEndPoint(point2)
-        self.pointTextLayer.setPosition(point)
-        self.pointTextLayer.setText(formatWidthHeightString(width, height))
+        self.currentMeasurements = (width, height)
         return True
 
     def measureOutline(self,
@@ -511,10 +754,10 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         with self.outlineHeightLayer.propertyGroup():
             self.outlineHeightLayer.setStartPoint((x, y1))
             self.outlineHeightLayer.setEndPoint((x, y1 + height))
-        with self.outlineTextLayer.propertyGroup():
-            self.outlineTextLayer.setPosition((x, y))
-            self.outlineTextLayer.setText(formatWidthHeightString(width, height))
+        with self.measurementsTextLayer.propertyGroup():
+            self.currentMeasurements = (width, height)
         return True
+
 
 # -------
 # Cursors
@@ -561,6 +804,7 @@ def formatWidthHeightString(width, height):
     s = f"{width} × {height}"
     return s
 
+
 # Adjacent Values
 # ---------------
 
@@ -597,8 +841,7 @@ def findAdjacentValues(
 def measureSegmentsAndHandles(
         point,
         glyph,
-        highlightLayer,
-        textLayer
+        highlightLayer
     ):
     x, y = point
     selector = glyph.getRepresentation("doodle.GlyphSelection")
@@ -606,7 +849,6 @@ def measureSegmentsAndHandles(
     found = selector.segmentStrokeHitByPoint_(point, 5)
     if not found:
         highlightLayer.setVisible(False)
-        textLayer.setVisible(False)
         return
     contourIndex, segmentIndex, nsSegment = found
     contour = glyph[contourIndex]
@@ -635,11 +877,8 @@ def measureSegmentsAndHandles(
     highlightLayer.setPath(pen.path)
     width = int(round(abs(x1 - x2)))
     height = int(round(abs(y1 - y2)))
-    textLayer.setPosition((x, y))
-    textLayer.setText(formatWidthHeightString(width, height))
     highlightLayer.setVisible(True)
-    textLayer.setVisible(True)
-    return segmentType, points
+    return segmentType, points, (width, height)
 
 
 class HandlesToLinesPen(BasePen):
@@ -689,7 +928,7 @@ def handlesAsLinesGlyphFactory(glyph):
 
 defcon.registerRepresentationFactory(
     defcon.Glyph,
-    extensionID + "handlesAsLines",
+    extensionKeyStub + "handlesAsLines",
     handlesAsLinesGlyphFactory
 )
 
@@ -706,83 +945,69 @@ class NearestPointsPointPen(AbstractPointPen):
 
     def __init__(self):
         self.onCurvePoints = []
-        self.offCurvePoints = []
-        self.searchString = None
+        self.contourOnCurveCounts = {}
+        self._currentContour = 0
+        self._pointIndex = 0
 
     def beginPath(self, **kwargs):
         pass
 
     def endPath(self, **kwargs):
-        pass
+        self.contourOnCurveCounts[self._currentContour] = self._pointIndex
+        self._currentContour += 1
+        self._pointIndex = 0
 
     def addComponent(self, **kwargs):
         pass
 
     def addPoint(self, pt, segmentType=None, **kwargs):
-        if segmentType is None:
-            self.offCurvePoints.append(pt)
-        else:
-            self.onCurvePoints.append(pt)
+        if segmentType is not None:
+            self.onCurvePoints.append((self._currentContour, self._pointIndex, pt))
+            self._pointIndex += 1
 
-    def find(self, location):
-        # get the sequence of points for
-        # eliminating point1-point2 sequences.
-        if self.searchString is None:
-            l = []
-            for x, y in self.onCurvePoints:
-                l.append(_formatCoordinateForSearching(x, y))
-            if l:
-                l.append(l[0])
-            self.searchString = " ".join(l)
-        angleRoundingIncrement = 10
+    def find(self, glyph, location):
         collinearityTolerance = 0.2
         rightAngleTolerance = 20
-        # find nearest points for angles
-        # rotating around the location
-        angles = {}
-        for point in self.onCurvePoints:
+        # calculate angle and distance from
+        # location to all points.
+        points = []
+        for contourIndex, pointIndex, point in self.onCurvePoints:
             angle = bezierTools.calculateAngle(*sorted((location, point)))
             angle = normalizeAngle(angle)
-            angle = roundTo(angle, angleRoundingIncrement)
-            if angle not in angles:
-                angles[angle] = []
+            # eliminate wonky angles now
+            if getRightAngleVariance(angle, rightAngleTolerance) is None:
+                continue
             distance = bezierTools.distanceFromPointToPoint(point, location)
-            angles[angle].append((distance, point))
-        nearest = []
-        for angle, points in angles.items():
-            points.sort()
-            distance, point = points[0]
-            nearest.append((angle, distance, point))
-        if len(nearest) < 2:
+            points.append((angle, distance, contourIndex, pointIndex, point))
+        if len(points) < 2:
             return
-        # skip sequential points because
-        # they are highlighted by another means.
-        # use collinearity with the location
-        # to eliminate point combinations that
-        # don't make sense. then further narrow
-        # down based on how close to a right angle
-        # the line between points is.
+        # test all combinations and filter combinations
+        # that don't meet various criteria. the filters
+        # should be organized from least to most expensive.
         tested = set()
         candidates = []
-        for angle1, distance1, point1 in nearest:
-            for angle2, distance2, point2 in nearest:
+        for angle1, distance1, contourIndex1, pointIndex1, point1 in points:
+            for angle2, distance2, contourIndex2, pointIndex2, point2 in points:
                 if point1 == point2:
                     continue
+                # already tested
                 k = tuple(sorted((point1, point2)))
                 if k in tested:
                     continue
-                s = " ".join((
-                    _formatCoordinateForSearching(*point1),
-                    _formatCoordinateForSearching(*point2)
-                ))
-                if s in self.searchString:
+                # if point1 and point2 are on the same
+                # contour and they are next to each
+                # other sequentially, skip.
+                if contourIndex1 == contourIndex2:
+                    if abs(pointIndex1 - pointIndex2) == 1:
+                        continue
+                # if the location is not roughly in the middle
+                # of point1 and point2, skip.
+                totalEstimatedDistance = distance1 + distance2
+                t = distance1 / totalEstimatedDistance
+                if t < 0.35 or t > 0.65:
                     continue
-                s = " ".join((
-                    _formatCoordinateForSearching(*point2),
-                    _formatCoordinateForSearching(*point1)
-                ))
-                if s in self.searchString:
-                    continue
+                # if point1 - location - point2 are not
+                # relatively collinear, skip.
                 x1, y1 = point1
                 x2, y2 = location
                 x3, y3 = point2
@@ -795,29 +1020,30 @@ class NearestPointsPointPen(AbstractPointPen):
                 collinearity = abs(a1 - a2)
                 if collinearity > collinearityTolerance:
                     continue
-                # XXX future candidate eliminators can go here.
-                # - something that eliminates
-                #   lines that cut across contours.
-                #   for example the top curve on a b
-                #   snapping to the bottom of the counter.
+                # if the line between point1 and point2
+                # is not close to a right angle, skip.
                 angle = bezierTools.calculateAngle(point1, point2)
                 angle = normalizeAngle(angle)
-                if angle <= rightAngleTolerance:
-                    angleVariation = angle
-                elif angle >= (90 - rightAngleTolerance) and angle <= (90 + rightAngleTolerance):
-                    angleVariation = abs(90 - angle)
-                elif angle >= (180 - rightAngleTolerance) and angle <= (180 + rightAngleTolerance):
-                    angleVariation = abs(180 - angle)
-                elif angle >= (270 - rightAngleTolerance) and angle <= (270 + rightAngleTolerance):
-                    angleVariation = abs(270 - angle)
-                elif angle >= (360 - rightAngleTolerance):
-                    angleVariation = 360 - angle
-                else:
+                angleVariation = getRightAngleVariance(angle, rightAngleTolerance)
+                if angleVariation is None:
                     continue
                 angleVariation = round(angleVariation, -1)
-                angleVariation = 0
+                # if the line between point1 and point2
+                # intersects a line in the glyph, skip.
+                line = ((x1, y1), (x3, y3))
+                intersections = tools.IntersectGlyphWithLine(
+                    glyph,
+                    line,
+                    canHaveComponent=False,
+                    addSideBearings=False
+                )
+                for point in line:
+                    if point in intersections:
+                        intersections.remove(point)
+                if intersections:
+                    continue
+                # store
                 distance = bezierTools.distanceFromPointToPoint(point1, point2)
-                distance = int(round(distance))
                 candidates.append((angleVariation, distance, (point1, point2)))
         if not candidates:
             return
@@ -832,7 +1058,7 @@ def nearestPointSearcherGlyphFactory(glyph):
 
 defcon.registerRepresentationFactory(
     defcon.Glyph,
-    extensionID + "nearestPointSearcher",
+    extensionKeyStub + "nearestPointSearcher",
     nearestPointSearcherGlyphFactory
 )
 
@@ -844,6 +1070,20 @@ def normalizeAngle(angle):
 def roundTo(value, multiple):
     value = int(round(value / float(multiple))) * multiple
     return value
+
+def getRightAngleVariance(angle, tolerance):
+    angleVariation = None
+    if angle <= tolerance:
+        angleVariation = angle
+    elif angle >= (90 - tolerance) and angle <= (90 + tolerance):
+        angleVariation = abs(90 - angle)
+    elif angle >= (180 - tolerance) and angle <= (180 + tolerance):
+        angleVariation = abs(180 - angle)
+    elif angle >= (270 - tolerance) and angle <= (270 + tolerance):
+        angleVariation = abs(270 - angle)
+    elif angle >= (360 - tolerance):
+        angleVariation = 360 - angle
+    return angleVariation
 
 
 # Segment Matching
@@ -903,6 +1143,7 @@ class SegmentsPen(BasePen):
         self.segments = []
 
     def _moveTo(self, pt):
+        self.firstPoint = pt
         self.prevPoint = pt
 
     def _lineTo(self, pt):
@@ -918,10 +1159,15 @@ class SegmentsPen(BasePen):
         self.prevPoint = pt2
 
     def _closePath(self):
+        if self.prevPoint != self.firstPoint:
+            self.segments.append(("line", (self.prevPoint, self.firstPoint)))
+        self.firstPoint = None
         self.prevPoint = None
 
     def _endPath(self):
+        self.firstPoint = None
         self.prevPoint = None
+
 
 def segmentsGlyphFactory(glyph):
     segmentsPen = SegmentsPen()
@@ -930,7 +1176,7 @@ def segmentsGlyphFactory(glyph):
 
 defcon.registerRepresentationFactory(
     defcon.Glyph,
-    extensionID + "segments",
+    extensionKeyStub + "segments",
     segmentsGlyphFactory
 )
 
@@ -1006,7 +1252,7 @@ def handlesGlyphFactory(glyph):
 
 defcon.registerRepresentationFactory(
     defcon.Glyph,
-    extensionID + "handles",
+    extensionKeyStub + "handles",
     handlesGlyphFactory
 )
 
@@ -1019,7 +1265,7 @@ def main():
     subscriber.registerGlyphEditorSubscriber(LaserMeasureSubscriber)
 
 if __name__ == "__main__":
-    if AppKit.NSUserName() == "tal":
+    if AppKit.NSUserName() in ("tal", "talleming"):
         for key in defaults.keys():
             removeExtensionDefault(key)
         registerExtensionDefaults(defaults)

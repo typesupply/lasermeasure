@@ -22,30 +22,39 @@ from mojo.extensions import (
 from mojo import UI
 
 
-extensionID = "com.typesupply.LaserMeasure."
+extensionID = "com.typesupply.LaserMeasure"
+extensionKeyStub = extensionID + "."
+
+# --------
+# Defaults
+# --------
 
 defaults = {
-    extensionID + "triggerCharacter" : "d",
-    extensionID + "baseColor" : (0, 0.3, 1, 0.8),
-    extensionID + "matchColor" : (1, 0.7, 0, 0.9),
-    extensionID + "highlightStrokeWidth" : 10,
-    extensionID + "highlightStrokeAlpha" : 0.2,
-    extensionID + "measurementTextSize" : 12,
-    extensionID + "tests.selection" : True,
-    extensionID + "tests.segments" : True,
-    extensionID + "tests.segmentMatches" : True,
-    extensionID + "tests.offCurves" : True,
-    extensionID + "tests.offCurveMatches" : True,
-    extensionID + "tests.points" : True,
-    extensionID + "tests.general" : True,
-    extensionID + "tests.anchors" : True,
+    extensionKeyStub + "triggerCharacter" : "d",
+    extensionKeyStub + "baseColor" : (0, 0.3, 1, 0.8),
+    extensionKeyStub + "matchColor" : (1, 0.7, 0, 0.9),
+    extensionKeyStub + "highlightStrokeWidth" : 10,
+    extensionKeyStub + "highlightOpacity" : 0.2,
+    extensionKeyStub + "measurementTextSize" : 12,
+    extensionKeyStub + "testSelection" : True,
+    extensionKeyStub + "testSegments" : True,
+    extensionKeyStub + "testSegmentMatches" : True,
+    extensionKeyStub + "testOffCurves" : True,
+    extensionKeyStub + "testOffCurveMatches" : True,
+    extensionKeyStub + "testPoints" : True,
+    extensionKeyStub + "testGeneral" : True,
+    extensionKeyStub + "testAnchors" : True,
 }
 
 registerExtensionDefaults(defaults)
 
-def getDefault(key):
-    key = extensionID + key
+def internalGetDefault(key):
+    key = extensionKeyStub + key
     return getExtensionDefault(key)
+
+def internalSetDefault(key, value):
+    key = extensionKeyStub + key
+    setExtensionDefault(key, value)
 
 # ----------
 # Subscriber
@@ -68,16 +77,15 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
     # positioned relative to each other and
     # the super.
 
-
     def build(self):
         window = self.getGlyphEditor()
         self.containerBackground = window.extensionContainer(
-            identifier=extensionID + "background",
+            identifier=extensionKeyStub + "background",
             location="background",
             clear=True
         )
         self.containerForeground = window.extensionContainer(
-            identifier=extensionID + "foreground",
+            identifier=extensionKeyStub + "foreground",
             location="foreground",
             clear=True
         )
@@ -141,32 +149,33 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         )
         self.anchorWidthLayer = self.anchorBackground.appendLineSublayer()
         self.anchorHeightLayer = self.anchorBackground.appendLineSublayer()
+        # register for defaults change
+        events.addObserver(
+            self,
+            "extensionDefaultsChanged",
+            extensionID + ".defaultsChanged"
+        )
         # go
         self.clearText()
         self.loadDefaults()
 
     def loadDefaults(self):
         # load
-        self.triggerCharacter = getDefault("triggerCharacter")
-        self.doTestSelection = getDefault("tests.selection")
-        self.doTestSegments = getDefault("tests.segments")
-        self.doTestSegmentMatches = getDefault("tests.segmentMatches")
-        self.doTestOffCurves = getDefault("tests.offCurves")
-        self.doTestOffCurveMatches = getDefault("tests.offCurveMatches")
-        self.doTestPoints = getDefault("tests.points")
-        self.doTestGeneral = getDefault("tests.general")
-        self.doTestAnchors = getDefault("tests.anchors")
-        mainColor = getDefault("baseColor")
+        self.triggerCharacter = internalGetDefault("triggerCharacter")
+        self.doTestSelection = internalGetDefault("testSelection")
+        self.doTestSegments = internalGetDefault("testSegments")
+        self.doTestSegmentMatches = internalGetDefault("testSegmentMatches")
+        self.doTestOffCurves = internalGetDefault("testOffCurves")
+        self.doTestOffCurveMatches = internalGetDefault("testOffCurveMatches")
+        self.doTestPoints = internalGetDefault("testPoints")
+        self.doTestGeneral = internalGetDefault("testGeneral")
+        self.doTestAnchors = internalGetDefault("testAnchors")
+        mainColor = internalGetDefault("baseColor")
         backgroundColor = UI.getDefault("glyphViewBackgroundColor")
-        matchColor = getDefault("matchColor")
-        textSize = getDefault("measurementTextSize")
-        highlightAlpha = getDefault("highlightStrokeAlpha")
-        highlightWidth = getDefault("highlightStrokeWidth")
-        # create colors
-        r, g, b, a = mainColor
-        mainHighlightColor = (r, g, b, a * highlightAlpha)
-        r, g, b, a = matchColor
-        matchHighlightColor = (r, g, b, a * highlightAlpha)
+        matchColor = internalGetDefault("matchColor")
+        textSize = internalGetDefault("measurementTextSize")
+        highlightOpacity = internalGetDefault("highlightOpacity")
+        highlightWidth = internalGetDefault("highlightStrokeWidth")
         # build
         lineAttributes = dict(
             strokeColor=mainColor,
@@ -174,9 +183,10 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         )
         highlightAttributes = dict(
             fillColor=None,
-            strokeColor=mainHighlightColor,
+            strokeColor=mainColor,
             strokeWidth=highlightWidth,
-            strokeCap="round"
+            strokeCap="round",
+            opacity=highlightOpacity
         )
         textAttributes = dict(
             backgroundColor=mainColor,
@@ -210,10 +220,10 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.outlineWidthLayer.setPropertiesByName(lineAttributes)
         self.outlineHeightLayer.setPropertiesByName(lineAttributes)
         self.segmentMatchHighlightLayer.setPropertiesByName(highlightAttributes)
-        self.segmentMatchHighlightLayer.setStrokeColor(matchHighlightColor)
+        self.segmentMatchHighlightLayer.setStrokeColor(matchColor)
         self.segmentHighlightLayer.setPropertiesByName(highlightAttributes)
         self.handleMatchHighlightLayer.setPropertiesByName(highlightAttributes)
-        self.handleMatchHighlightLayer.setStrokeColor(matchHighlightColor)
+        self.handleMatchHighlightLayer.setStrokeColor(matchColor)
         self.handleHighlightLayer.setPropertiesByName(highlightAttributes)
         self.pointLineLayer.setPropertiesByName(lineAttributes)
         self.anchorWidthLayer.setPropertiesByName(lineAttributes)
@@ -222,6 +232,10 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
     def destroy(self):
         self.containerBackground.clearSublayers()
         self.containerForeground.clearSublayers()
+        events.removeObserver(
+            self,
+            extensionID + ".defaultsChanged"
+        )
 
     def hideLayers(self):
         self.containerBackground.setVisible(False)
@@ -230,6 +244,12 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
 
     # Events
     # ------
+
+    def roboFontDidChangePreferences(self, info):
+        self.loadDefaults()
+
+    def extensionDefaultsChanged(self, event):
+        self.loadDefaults()
 
     wantsMeasurements = False
     currentDisplayFocalPoint = None
@@ -444,7 +464,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
     #
     # These perform measurements and update the contents
     # of their layers as needed. (These do not update text
-    # because it is more effecient to do that at the end.)
+    # because it is more efficient to do that at the end.)
     # Each of these must return True if they found something
     # to measure. This will be used to stop further searching
     # and know which layers should be visible.
@@ -580,7 +600,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         ):
         hit = measureSegmentsAndHandles(
             point,
-            glyph.getRepresentation(extensionID + "handlesAsLines"),
+            glyph.getRepresentation(extensionKeyStub + "handlesAsLines"),
             self.handleHighlightLayer
         )
         if not self.doTestOffCurveMatches:
@@ -605,7 +625,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         layer = self.handleMatchHighlightLayer
         layerPen = merz.MerzPen()
         target = HandleMatcher(points)
-        handles = glyph.getRepresentation(extensionID + "handles")
+        handles = glyph.getRepresentation(extensionKeyStub + "handles")
         for handle in handles:
             if target.compare(handle):
                 layerPen.moveTo(handle[0])
@@ -647,7 +667,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         layer = self.segmentMatchHighlightLayer
         layerPen = merz.MerzPen()
         target = SegmentMatcher(segmentType, segmentPoints)
-        segments = glyph.getRepresentation(extensionID + "segments")
+        segments = glyph.getRepresentation(extensionKeyStub + "segments")
         for otherSegmentType, otherSegmentPoints in segments:
             if target.compare(otherSegmentType, otherSegmentPoints):
                 layerPen.moveTo(otherSegmentPoints[0])
@@ -665,7 +685,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             glyph,
             deviceState
         ):
-        pen = glyph.getRepresentation(extensionID + "nearestPointSearcher")
+        pen = glyph.getRepresentation(extensionKeyStub + "nearestPointSearcher")
         points = pen.find(glyph, point)
         if not points:
             return
@@ -738,6 +758,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             self.currentMeasurements = (width, height)
         return True
 
+
 # -------
 # Cursors
 # -------
@@ -782,6 +803,7 @@ def formatWidthHeightString(width, height):
     height = otRound(height)
     s = f"{width} × {height}"
     return s
+
 
 # Adjacent Values
 # ---------------
@@ -906,7 +928,7 @@ def handlesAsLinesGlyphFactory(glyph):
 
 defcon.registerRepresentationFactory(
     defcon.Glyph,
-    extensionID + "handlesAsLines",
+    extensionKeyStub + "handlesAsLines",
     handlesAsLinesGlyphFactory
 )
 
@@ -1036,7 +1058,7 @@ def nearestPointSearcherGlyphFactory(glyph):
 
 defcon.registerRepresentationFactory(
     defcon.Glyph,
-    extensionID + "nearestPointSearcher",
+    extensionKeyStub + "nearestPointSearcher",
     nearestPointSearcherGlyphFactory
 )
 
@@ -1062,6 +1084,7 @@ def getRightAngleVariance(angle, tolerance):
     elif angle >= (360 - tolerance):
         angleVariation = 360 - angle
     return angleVariation
+
 
 # Segment Matching
 # ----------------
@@ -1153,7 +1176,7 @@ def segmentsGlyphFactory(glyph):
 
 defcon.registerRepresentationFactory(
     defcon.Glyph,
-    extensionID + "segments",
+    extensionKeyStub + "segments",
     segmentsGlyphFactory
 )
 
@@ -1229,7 +1252,7 @@ def handlesGlyphFactory(glyph):
 
 defcon.registerRepresentationFactory(
     defcon.Glyph,
-    extensionID + "handles",
+    extensionKeyStub + "handles",
     handlesGlyphFactory
 )
 

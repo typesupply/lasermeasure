@@ -34,17 +34,28 @@ dynamically measured:
   and a glyph's bounding box, hold option and hover between the anchor
   and the glyph's outline.
 
-## Defaults
+## Settings
 
-If you want to change a default, do it with code using these keys until a window is ready:
+If you want to change a settings, use the settings window. This window
+if only available in RoboFont 4.2 and later. If you are using an earlier
+version you'll need to do it with code using these keys until a window
+is ready:
 
 ```
 com.typesupply.LaserMeasure.triggerCharacter
 com.typesupply.LaserMeasure.baseColor
 com.typesupply.LaserMeasure.matchColor
 com.typesupply.LaserMeasure.highlightStrokeWidth
-com.typesupply.LaserMeasure.highlightStrokeAlpha
+com.typesupply.LaserMeasure.highlightOpacity
 com.typesupply.LaserMeasure.measurementTextSize
+com.typesupply.LaserMeasure.testSelection
+com.typesupply.LaserMeasure.testSegments
+com.typesupply.LaserMeasure.testSegmentMatches
+com.typesupply.LaserMeasure.testOffCurves
+com.typesupply.LaserMeasure.testOffCurveMatches
+com.typesupply.LaserMeasure.testPoints
+com.typesupply.LaserMeasure.testGeneral
+com.typesupply.LaserMeasure.testAnchors
 ```
 
 ```python
