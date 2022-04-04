@@ -985,6 +985,9 @@ class HandlesToLinesPen(BasePen):
     def _endPath(self):
         self.prevPoint = None
 
+    def addComponent(self, *args, **kwargs):
+        pass
+
 
 def handlesAsLinesGlyphFactory(glyph):
     outGlyph = RGlyph()
@@ -1023,7 +1026,7 @@ class NearestPointsPointPen(AbstractPointPen):
         self._currentContour += 1
         self._pointIndex = 0
 
-    def addComponent(self, **kwargs):
+    def addComponent(self, *args, **kwargs):
         pass
 
     def addPoint(self, pt, segmentType=None, **kwargs):
