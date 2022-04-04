@@ -97,13 +97,17 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             visible=False,
             name="measurements"
         )
+        self.namesTextLayer = self.textLayer.appendTextLineSublayer(
+            visible=False,
+            name="names"
+        )
         self.selectionMeasurementsTextLayer = self.textLayer.appendTextLineSublayer(
             visible=False,
             name="selection"
         )
-        self.matchesTextLayer = self.textLayer.appendTextLineSublayer(
+        self.selectionNamesTextLayer = self.textLayer.appendTextLineSublayer(
             visible=False,
-            name="matches"
+            name="selectionNames"
         )
         # outline
         self.outlineBackground = self.containerBackground.appendBaseSublayer(
@@ -158,6 +162,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         # go
         self.clearText()
         self.loadDefaults()
+        self.loadNamedMeasurements()
 
     def loadDefaults(self):
         # load
@@ -202,6 +207,10 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         measurementTextAttributes = dict(textAttributes)
         measurementTextAttributes.update(dict(
         ))
+        namesTextAttributes = dict(textAttributes)
+        namesTextAttributes.update(dict(
+            backgroundColor=matchColor
+        ))
         selectionMeasurementsTextAttributes = dict(textAttributes)
         selectionMeasurementsTextAttributes.update(dict(
             borderColor=mainColor,
@@ -209,14 +218,16 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             fillColor=mainColor,
             borderWidth=1
         ))
-        matchesTextAttributes = dict(textAttributes)
-        matchesTextAttributes.update(dict(
-            backgroundColor=matchColor
+        selectionNamesTextAttributes = dict(selectionMeasurementsTextAttributes)
+        selectionNamesTextAttributes.update(dict(
+            borderColor=matchColor,
+            fillColor=matchColor
         ))
         # populate
         self.measurementsTextLayer.setPropertiesByName(textAttributes)
+        self.namesTextLayer.setPropertiesByName(namesTextAttributes)
         self.selectionMeasurementsTextLayer.setPropertiesByName(selectionMeasurementsTextAttributes)
-        self.matchesTextLayer.setPropertiesByName(matchesTextAttributes)
+        self.selectionNamesTextLayer.setPropertiesByName(selectionNamesTextAttributes)
         self.outlineWidthLayer.setPropertiesByName(lineAttributes)
         self.outlineHeightLayer.setPropertiesByName(lineAttributes)
         self.segmentMatchHighlightLayer.setPropertiesByName(highlightAttributes)
@@ -228,6 +239,42 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.pointLineLayer.setPropertiesByName(lineAttributes)
         self.anchorWidthLayer.setPropertiesByName(lineAttributes)
         self.anchorHeightLayer.setPropertiesByName(lineAttributes)
+
+    def loadNamedMeasurements(self):
+        libKey = extensionID + ".measurements"
+        font = self.getGlyphEditor().document.getFont()
+        stored = font.lib.get(libKey, {})
+        self.namedWidthMeasurements = {}
+        self.namedHeightMeasurements = {}
+        self.namedWidthHeightMeasurements = {}
+        for name, data in stored.items():
+            width = data.get("width")
+            height = data.get("height")
+            key = None
+            location = None
+            if width is not None and height is not None:
+                location = self.namedWidthHeightMeasurements
+                key = (width, height)
+            elif width is not None:
+                location = self.namedWidthMeasurements
+                key = width
+                name = f"W: {name}"
+            elif height is not None:
+                location = self.namedHeightMeasurements
+                key = height
+                name = f"H: {name}"
+            if key not in location:
+                location[key] = []
+            location[key].append(name)
+        dicts = [
+            self.namedWidthMeasurements,
+            self.namedHeightMeasurements,
+            self.namedWidthHeightMeasurements
+        ]
+        for d in dicts:
+            for d, v in d.items():
+                v.sort()
+
 
     def destroy(self):
         self.containerBackground.clearSublayers()
@@ -251,11 +298,15 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
     def extensionDefaultsChanged(self, event):
         self.loadDefaults()
 
+    def fontMeasurementsChanged(self, info):
+        self.loadNamedMeasurements()
+
     wantsMeasurements = False
     currentDisplayFocalPoint = None
     currentMeasurements = None
     currentSelectionMeasurements = None
-    currentMatchNames = None
+    currentNames = None
+    currentSelectionNames = None
 
     def glyphEditorDidKeyDown(self, info):
         deviceState = info["deviceState"]
@@ -269,6 +320,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
                     glyph,
                     deviceState
                 )
+                self.findSelectionNames()
                 if selectionState:
                     editor = info["glyphEditor"]
                     view = editor.getGlyphView()
@@ -302,7 +354,6 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         point = tuple(info["locationInGlyph"])
         self.currentDisplayFocalPoint = point
         self.currentMeasurements = None
-        self.currentMatchNames = None
         anchorState = False
         handleState = False
         segmentState = False
@@ -335,6 +386,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
                     outlineState = True
                     break
             break
+        self.findNames()
         setCursorMode(cursorMode)
         self.anchorBackground.setVisible(anchorState)
         self.anchorForeground.setVisible(anchorState)
@@ -383,81 +435,81 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.currentDisplayFocalPoint = None
         self.currentMeasurements = None
         self.currentSelectionMeasurements = None
-        self.currentMatchNames = None
+        self.currentNames = None
+        self.currentSelectionNames = None
 
     def updateText(self):
-        offset = 7
+        cursorOffset = 7
+        textBlockOffset = 5
         if self.currentDisplayFocalPoint is not None:
             x, y = self.currentDisplayFocalPoint
-            x += offset
-            y -= offset
+            x += cursorOffset
+            y -= cursorOffset
             self.textLayer.setPosition((x, y))
-        haveMeasurements = False
-        haveSelection = False
-        haveMatches = False
-        if self.currentMeasurements:
-            self.measurementsTextLayer.setText(
-                formatWidthHeightString(*self.currentMeasurements)
+        displayOrder = [
+            ("measurements", self.currentMeasurements, self.measurementsTextLayer, formatWidthHeightString),
+            ("names", self.currentNames, self.namesTextLayer, formatNames),
+            ("selection", self.currentSelectionMeasurements, self.selectionMeasurementsTextLayer, formatWidthHeightString),
+            ("selectionNames", self.currentSelectionNames, self.selectionNamesTextLayer, formatNames)
+        ]
+        position = (
+            dict(
+                point="left",
+                relative="super"
+            ),
+            dict(
+                point="top",
+                relative="super"
             )
-            position = (
-                dict(
-                    point="left"
-                ),
-                dict(
-                    point="top"
-                )
+        )
+        visible = []
+        hidden = []
+        for (name, contents, layer, formatter) in displayOrder:
+            if not contents:
+                hidden.append(layer)
+                continue
+            layer.setText(
+                formatter(*contents)
             )
-            self.measurementsTextLayer.setPosition(position)
-            haveMeasurements = True
-        if self.currentSelectionMeasurements:
-            self.selectionMeasurementsTextLayer.setText(
-                formatWidthHeightString(*self.currentSelectionMeasurements)
-            )
-            position = (
-                dict(
-                    point="left"
-                ),
-                dict(
-                    point="top"
-                )
-            )
-            if haveMeasurements:
-                x, y = position
-                x["relative"] = "measurements"
-                y["relative"] = "measurements"
-                y["relativePoint"] = "bottom"
-                y["offset"] = -offset
-            self.selectionMeasurementsTextLayer.setPosition(position)
-            haveSelection = True
-        if self.currentMatchNames:
-            self.matchesTextLayer.setText(
-                "\n".join(sorted(self.currentMatchNames))
-            )
-            position = (
-                dict(
-                    point="left"
-                ),
-                dict(
-                    point="top"
-                )
-            )
-            if haveMeasurements or haveSelection:
-                x, y = position
-                if haveSelection:
-                    x["relative"] = "selection"
-                    y["relative"] = "selection"
-                else:
-                    x["relative"] = "measurements"
-                    y["relative"] = "measurements"
-                y["relativePoint"] = "bottom"
-                y["offset"] = -offset
-            self.matchesTextLayer.setPosition(position)
-            haveMatches = True
-        self.measurementsTextLayer.setVisible(haveMeasurements)
-        self.selectionMeasurementsTextLayer.setVisible(haveSelection)
-        self.matchesTextLayer.setVisible(haveMatches)
+            x = dict(position[0])
+            y = dict(position[1])
+            layer.setPosition((x, y))
+            visible.append(layer)
+            position[0]["relative"] = name
+            position[1]["relative"] = name
+            position[1]["relativePoint"] = "bottom"
+            position[1]["offset"] = -textBlockOffset
+        for layer in hidden:
+            layer.setVisible(False)
+        for layer in visible:
+            layer.setVisible(True)
         if not self.containerForeground.getVisible():
             self.containerForeground.setVisible(True)
+
+    # Names
+    # -----
+
+    def findNames(self):
+        self.currentNames = None
+        if not self.currentMeasurements:
+            return
+        w, h = self.currentMeasurements
+        names = self.namedWidthHeightMeasurements.get((w, h), [])
+        names += self.namedWidthMeasurements.get(w, [])
+        names += self.namedHeightMeasurements.get(h, [])
+        if names:
+            self.currentNames = names
+
+    def findSelectionNames(self):
+        self.currentSelectionNames = None
+        if not self.currentSelectionMeasurements:
+            return
+        w, h = self.currentSelectionMeasurements
+        names = self.namedWidthHeightMeasurements.get((w, h), [])
+        names += self.namedWidthMeasurements.get(w, [])
+        names += self.namedHeightMeasurements.get(h, [])
+        if names:
+            self.currentSelectionNames = names
 
     # Measurements
     # ------------
@@ -759,6 +811,18 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         return True
 
 
+try:
+    subscriber.registerSubscriberEvent(
+        subscriberEventName=extensionID + ".measurementsChanged",
+        methodName="fontMeasurementsChanged",
+        lowLevelEventNames=[extensionID + ".measurementsChanged"],
+        dispatcher="roboFont",
+        delay=0.1
+    )
+    print("registered")
+except AssertionError:
+    pass
+
 # -------
 # Cursors
 # -------
@@ -804,6 +868,8 @@ def formatWidthHeightString(width, height):
     s = f"{width} × {height}"
     return s
 
+def formatNames(*args):
+    return "\n".join(args)
 
 # Adjacent Values
 # ---------------

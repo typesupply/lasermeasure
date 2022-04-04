@@ -42,6 +42,19 @@ dynamically measured:</p>
   and a glyph's bounding box, hold option and hover between the anchor
   and the glyph's outline.</li>
 </ul>
+<h2 id="named-values">Named Values</h2>
+<p>Widths, heights or height and width combinations can be defined as
+font-specific named values. During measuring, if any of these values
+is matched, it will be displayed next to the measurement. These
+values are defined in the "Named Values" sheet. If you define a width
+and no height, any height will be matched. If you define a height and
+no width, any width will be matched.</p>
+<h3 id="storage-format">Storage Format</h3>
+<p>Values are stored in <code>font.lib</code> under the key <code>com.typesupply.LaserMeasure.measurements</code>.
+The data is stored as a dict of value names and dicts as values. The
+value dict has <code>width</code> and/or <code>height</code> keys. If <code>width</code> is defined but
+<code>height</code> is not any height will match. If <code>height</code> if defined but
+<code>width</code> is not any width will match.</p>
 <h2 id="settings">Settings</h2>
 <p>If you want to change a settings, use the settings window. This window
 if only available in RoboFont 4.2 and later. If you are using an earlier

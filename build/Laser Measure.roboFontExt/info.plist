@@ -6,6 +6,14 @@
 	<array>
 		<dict>
 			<key>path</key>
+			<string>menu_showNamedValues.py</string>
+			<key>preferredName</key>
+			<string>Named Values</string>
+			<key>shortKey</key>
+			<string></string>
+		</dict>
+		<dict>
+			<key>path</key>
 			<string>menu_showSettings.py</string>
 			<key>preferredName</key>
 			<string>Edit Settings</string>
@@ -30,7 +38,7 @@
 	<key>requiresVersionMinor</key>
 	<string>1</string>
 	<key>timeStamp</key>
-	<real>1648995815.1962109</real>
+	<real>1649101319.3830998</real>
 	<key>version</key>
 	<string>0.1</string>
 </dict>

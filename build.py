@@ -10,6 +10,12 @@ roboFontVersion = "4.1"
 pycOnly = False
 menuItems = [
     dict(
+        path="menu_showNamedValues.py",
+        preferredName="Named Values",
+        shortKey=""
+
+    ),
+    dict(
         path="menu_showSettings.py",
         preferredName="Edit Settings",
         shortKey=""

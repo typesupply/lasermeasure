@@ -34,6 +34,23 @@ dynamically measured:
   and a glyph's bounding box, hold option and hover between the anchor
   and the glyph's outline.
 
+## Named Values
+
+Widths, heights or height and width combinations can be defined as
+font-specific named values. During measuring, if any of these values
+is matched, it will be displayed next to the measurement. These
+values are defined in the "Named Values" sheet. If you define a width
+and no height, any height will be matched. If you define a height and
+no width, any width will be matched.
+
+### Storage Format
+
+Values are stored in `font.lib` under the key `com.typesupply.LaserMeasure.measurements`.
+The data is stored as a dict of value names and dicts as values. The
+value dict has `width` and/or `height` keys. If `width` is defined but
+`height` is not any height will match. If `height` if defined but
+`width` is not any width will match.
+
 ## Settings
 
 If you want to change a settings, use the settings window. This window
