@@ -59,6 +59,27 @@ value dict has `width` and/or `height` keys. If `width` is defined but
 `height` is not any height will match. If `height` if defined but
 `width` is not any width will match.
 
+```python
+key = "com.typesupply.LaserMeasure.measurements"
+
+stored = font.lib.get(key, {})
+stored["My Width"] = dict(width=100)
+stored["My Height"] = dict(height=50)
+stored["My Combination"] = dict(width=200, height=100)
+
+font.lib[key] = stored
+
+# to make the changes immediately available
+# in open glyph editors, post this event:
+
+from mojo import events
+
+events.postEvent(
+  extensionID + "com.typesupply.LaserMeasure.measurementsChanged",
+  font=font
+)
+```
+
 ## Settings
 
 If you want to change a settings, use the settings window. This window
