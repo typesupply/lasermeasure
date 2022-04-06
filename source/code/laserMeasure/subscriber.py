@@ -6,6 +6,7 @@ from fontTools.misc import arrayTools
 from fontTools.misc.fixedTools import otRound
 import defcon
 import AppKit
+import vanilla
 from lib.tools import bezierTools
 from fontParts.world import RGlyph
 import merz
@@ -30,6 +31,7 @@ extensionKeyStub = extensionID + "."
 # --------
 
 defaults = {
+    extensionKeyStub + "showMeasurementsHUD" : True,
     extensionKeyStub + "triggerCharacter" : "d",
     extensionKeyStub + "baseColor" : (0, 0.3, 1, 0.8),
     extensionKeyStub + "matchColor" : (1, 0.7, 0, 0.9),
@@ -79,6 +81,16 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
 
     def build(self):
         window = self.getGlyphEditor()
+
+        # Glyph Editor Overlay
+        # --------------------
+
+        self.hud = LaserMeasureNamedValuesHUD(window, self.hudAddNamedValueCallback)
+
+
+        # Glyph Editor Contents
+        # ---------------------
+
         self.containerBackground = window.extensionContainer(
             identifier=extensionKeyStub + "background",
             location="background",
@@ -161,8 +173,8 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         )
         # go
         self.clearText()
-        self.loadDefaults()
         self.loadNamedMeasurements()
+        self.loadDefaults()
 
     def loadDefaults(self):
         # load
@@ -239,11 +251,13 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.pointLineLayer.setPropertiesByName(lineAttributes)
         self.anchorWidthLayer.setPropertiesByName(lineAttributes)
         self.anchorHeightLayer.setPropertiesByName(lineAttributes)
+        self.hud.update()
 
     def loadNamedMeasurements(self):
         libKey = extensionID + ".measurements"
-        font = self.getGlyphEditor().document.getFont()
+        font = self.getFont()
         stored = font.lib.get(libKey, {})
+        self.hud.setItems(stored)
         self.namedWidthMeasurements = {}
         self.namedHeightMeasurements = {}
         self.namedWidthHeightMeasurements = {}
@@ -275,7 +289,6 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             for d, v in d.items():
                 v.sort()
 
-
     def destroy(self):
         self.containerBackground.clearSublayers()
         self.containerForeground.clearSublayers()
@@ -288,6 +301,12 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.containerBackground.setVisible(False)
         self.containerForeground.setVisible(False)
         self.clearText()
+
+    # Objects
+    # -------
+
+    def getFont(self):
+        return self.getGlyphEditor().document.getFont()
 
     # Events
     # ------
@@ -314,6 +333,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             self.wantsMeasurements = False
         else:
             self.wantsMeasurements = True
+            selectionState = False
             glyph = info["glyph"]
             if self.doTestSelection:
                 selectionState = self.measureSelection(
@@ -331,11 +351,13 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
                         self.currentDisplayFocalPoint = position
                         self.updateText()
             setCursorMode("searching")
+            self.hud.show(self.currentSelectionMeasurements is not None)
 
     def glyphEditorDidKeyUp(self, info):
         self.wantsMeasurements = False
         self.hideLayers()
         setCursorMode(None)
+        self.hud.hide()
 
     def glyphEditorDidMouseDown(self, info):
         self.wantsMeasurements = False
@@ -427,6 +449,36 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             yBeforeFallback = min((yBeforeFallback, y))
             yAfterFallback = max((yAfterFallback, y))
         return xBeforeFallback, yBeforeFallback, xAfterFallback, yAfterFallback
+
+    def hudAddNamedValueCallback(self, sender):
+        from .namedValuesSheet import NamedValuesSheetController
+        font = self.getFont()
+        measurements = self.currentSelectionMeasurements
+        if not measurements:
+            return
+        width, height = measurements
+        if width == 0:
+            width = None
+        if height == 0:
+            height = None
+        items = font.lib.get(extensionKeyStub + "measurements", {})
+        i = 0
+        while 1:
+            i += 1
+            name = f"Name{i}"
+            if name in items:
+                continue
+            item = {}
+            if width is not None:
+                item["width"] = width
+            if height is not None:
+                item["height"] = height
+            items[name] = item
+            break
+        font.lib[extensionKeyStub + "measurements"] = items
+        self.glyphEditorDidKeyUp({})
+        window = UI.CurrentFontWindow()
+        NamedValuesSheetController(window.w, font)
 
     # Text
     # ----
@@ -819,7 +871,6 @@ try:
         dispatcher="roboFont",
         delay=0.1
     )
-    print("registered")
 except AssertionError:
     pass
 
@@ -1324,6 +1375,212 @@ defcon.registerRepresentationFactory(
     extensionKeyStub + "handles",
     handlesGlyphFactory
 )
+
+
+# ---
+# HUD
+# ---
+
+class LaserMeasureNamedValuesHUD:
+
+    def __init__(self, glyphEditor, buttonCallback):
+        self.items = {}
+
+        group = vanilla.Group((0, 0, 0, 0))
+        group.background = merz.MerzView((0, 0, 0, 0))
+        group.button = vanilla.ImageButton(
+            (-20, 0, 20, 20),
+            bordered=False,
+            callback=buttonCallback
+        )
+        group.textView = merz.MerzView((0, 25, 0, 0))
+
+        self.group = group
+        self.background = group.background.getMerzContainer()
+        self.button = group.button
+        self.textView = group.textView
+        self.textContainer = group.textView.getMerzContainer()
+
+        self.update()
+        group.show(False)
+
+        glyphEditor.addGlyphEditorSubview(
+            group,
+            identifier=extensionID + ".LaserMeasureNamedValuesHUD",
+            clear=True
+        )
+
+    def show(self, showButton):
+        if self.button.isVisible() != showButton:
+            self.button.show(showButton)
+        if not self.group.isVisible():
+            self.group.show(True)
+
+    def hide(self):
+        self.group.show(False)
+
+    def setItems(self, items):
+        self.items = items
+        self.update()
+
+    def update(self):
+        color = getExtensionDefault(extensionID + ".matchColor")
+        r, g, b, a = color
+        lineColor = (r, g, b, a * 0.25)
+        backgroundColor = tuple(UI.getDefault("glyphViewBackgroundColor"))
+        r, g, b, a = backgroundColor
+        backgroundColor = (r, g, b, 0.8)
+
+        # Background
+        self.background.setBackgroundColor(backgroundColor)
+
+        # Button
+        image = AppKit.NSImage.alloc().initWithSize_((20, 20))
+        path = AppKit.NSBezierPath.bezierPathWithOvalInRect_(((2, 2), (16, 16)))
+        path.moveToPoint_((10, 6))
+        path.lineToPoint_((10, 14))
+        path.moveToPoint_((6, 10))
+        path.lineToPoint_((14, 10))
+        path.setLineWidth_(1)
+        path.setLineCapStyle_(AppKit.NSLineCapStyleRound)
+        image.lockFocus()
+        AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(*backgroundColor).set()
+        path.fill()
+        AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(*color).set()
+        path.stroke()
+        image.unlockFocus()
+        self.button.setImage(imageObject=image)
+
+        # Text
+        items = self.items
+        unpacked = []
+        for name, item in items.items():
+            width = item.get("width")
+            if width is None:
+                width = ""
+            else:
+                width = str(width)
+            height = item.get("height")
+            if height is None:
+                height = ""
+            else:
+                height = str(height)
+            item = dict(name=name, width=width, height=height)
+            unpacked.append((name.lower(), width, height, item))
+        unpacked.sort()
+        items = [i[-1] for i in unpacked]
+
+        pointSize = 12
+        textAttributes = dict(
+            pointSize=pointSize,
+            padding=(0, pointSize / 4),
+            horizontalAlignment="right",
+            weight="medium",
+            figureStyle="tabular",
+            fillColor=color
+        )
+        font = merz.text.makeFont(
+            "system",
+            weight=textAttributes["weight"],
+            figureStyle=textAttributes["figureStyle"],
+            pointSize=textAttributes["pointSize"],
+        )
+
+        nameWidths = []
+        numberWidths = []
+        for item in items:
+            nameWidths.append(calculateTextWidth(item["name"], font))
+            numberWidths.append(calculateTextWidth(item["width"], font))
+            numberWidths.append(calculateTextWidth(item["height"], font))
+
+        buttonWidth = 20
+        buttonHeight = 30
+        pointSize = textAttributes["pointSize"]
+        nameWidth = 0
+        numberWidth = 0
+        if items:
+            nameWidth = max(nameWidths)
+            numberWidth = max(numberWidths)
+        rowHeight = pointSize * 2
+        columnSpacing = pointSize * 0.75
+        totalWidth = nameWidth + columnSpacing + numberWidth + columnSpacing + numberWidth
+        totalWidth = max((buttonWidth, totalWidth))
+        textViewHeight = rowHeight * (len(items) + 1)
+        totalHeight = textViewHeight + buttonHeight
+        xStart = -25
+        yStart = 10
+
+        x, y, w, h = self.group.getPosSize()
+        self.group.setPosSize((-totalWidth + xStart, yStart, totalWidth, totalHeight))
+        if items:
+            items.insert(0, dict(name="", width="W", height="H"))
+
+        self.textContainer.clearSublayers()
+
+        top = textViewHeight
+
+        if items:
+            self.textContainer.appendBaseSublayer(
+                name=f"topLine",
+                position=(0, top - 1),
+                size=(totalWidth, 1),
+                borderColor=lineColor,
+                borderWidth=1
+            )
+
+        for i, item in enumerate(items):
+            name = item["name"]
+            width = item["width"]
+            height = item["height"]
+            y = top - rowHeight
+            # name
+            self.textContainer.appendTextBoxSublayer(
+                name=f"name{i}",
+                text=name,
+                position=(0, y),
+                size=(nameWidth, rowHeight),
+                **textAttributes
+            )
+            # width
+            self.textContainer.appendTextBoxSublayer(
+                name=f"width{i}",
+                text=width,
+                position=(
+                    nameWidth + columnSpacing,
+                    y
+                ),
+                size=(numberWidth, rowHeight),
+                **textAttributes
+            )
+            # height
+            self.textContainer.appendTextBoxSublayer(
+                name=f"height{i}",
+                text=height,
+                position=(
+                    nameWidth + columnSpacing + numberWidth + columnSpacing,
+                    y
+                ),
+                size=(numberWidth, rowHeight),
+                **textAttributes
+            )
+            # line
+            self.textContainer.appendBaseSublayer(
+                name=f"line{i}",
+                position=(0, y),
+                size=(totalWidth, 1),
+                borderColor=lineColor,
+                borderWidth=1
+            )
+            top -= rowHeight
+
+
+def calculateTextWidth(text, font):
+    attrs = {
+        AppKit.NSFontAttributeName : font
+    }
+    s = AppKit.NSAttributedString.alloc().initWithString_attributes_(text, attrs)
+    width = s.size()[0]
+    return width
 
 
 # --

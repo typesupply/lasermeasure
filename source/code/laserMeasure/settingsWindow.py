@@ -7,14 +7,16 @@ if __name__ == "__main__":
         internalSetDefault,
         extensionID
     )
+    import legacy
 else:
     from .subscriber import (
         internalGetDefault,
         internalSetDefault,
         extensionID
     )
+    from . import legacy
 
-class LaserMeasureSettingsWindowController(ezui.WindowController):
+class _LaserMeasureSettingsWindowController(ezui.WindowController):
 
     def build(self):
         content = """
@@ -145,6 +147,20 @@ class LaserMeasureSettingsWindowController(ezui.WindowController):
     def triggerCharacterCallback(self, sender):
         if len(sender.get()) == 1:
             self.contentCallback(sender)
+
+
+note = """
+The settings window is only available in
+RoboFont 4.2+. However, you can change the
+settings with a script as described in
+the documentation.
+""".strip()
+
+def LaserMeasureSettingsWindowController(*args, **kwargs):
+    if legacy.versionMajor == 4 and legacy.versionMinor < 2:
+        print(note)
+    else:
+        _LaserMeasureSettingsWindowController(*args, **kwargs)
 
 if __name__ == "__main__":
     LaserMeasureSettingsWindowController()

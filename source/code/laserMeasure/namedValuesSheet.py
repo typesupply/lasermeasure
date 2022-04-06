@@ -3,13 +3,15 @@ from mojo import events
 
 if __name__ == "__main__":
     from subscriber import extensionID
+    import legacy
 else:
     from .subscriber import extensionID
+    from . import legacy
 
 
 libKey = extensionID + ".measurements"
 
-class NamedValuesSheetController(ezui.WindowController):
+class _NamedValuesSheetController(ezui.WindowController):
 
     def build(self, parent, font):
         self.font = font
@@ -120,6 +122,17 @@ class NamedValuesSheetController(ezui.WindowController):
             del items[index]
         self.table.set(items)
 
+
+note = """
+The named values sheet is only available
+in RoboFont 4.2+.
+""".strip()
+
+def NamedValuesSheetController(*args, **kwargs):
+    if legacy.versionMajor == 4 and legacy.versionMinor < 2:
+        print(note)
+    else:
+        _NamedValuesSheetController(*args, **kwargs)
 
 if __name__ == "__main__":
     from mojo.UI import CurrentFontWindow
