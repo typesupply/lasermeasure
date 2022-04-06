@@ -307,7 +307,15 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
     # -------
 
     def getFont(self):
-        return self.getGlyphEditor().document.getFont()
+        window = self.getGlyphEditor()
+        glyph = window.getGlyph()
+        # in single window mode glyph will
+        # be None at start up, so hack around
+        if glyph is None:
+            font = window.document.getFont()
+        else:
+            font = glyph.font
+        return font
 
     # Events
     # ------
