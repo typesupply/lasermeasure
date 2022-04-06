@@ -9,9 +9,9 @@
         </head>
         <body>
         <h1>Laser Measure</h1>
-<p>To get the measurements of the current selection. Press and hold <code>d</code>.
-The width and height of the current selection will be displayed in
-an outlined rectangle.</p>
+<p>To get the measurements of the current selection. Press and hold trigger
+character (<code>d</code> is the default). The width and height of the current
+selection will be displayed in an outlined rectangle.</p>
 <p>To dynamically measure items, press and hold <code>d</code> and move the cursor
 to what you want to measure. The found width and height will be
 displayed in a filled rectangle. These are the things that are
@@ -49,6 +49,12 @@ is matched, it will be displayed next to the measurement. These
 values are defined in the "Named Values" sheet. If you define a width
 and no height, any height will be matched. If you define a height and
 no width, any width will be matched.</p>
+<h3 id="reference-list">Reference List</h3>
+<p>When the trigger character is pressed, a list of all named values
+will be shown in the upper right corner of the glyph editor. If
+you have points selected, a <code>+</code> button will appear. Pressing this
+will open the named values sheet with a new entry based on the
+current selection.</p>
 <h3 id="storage-format">Storage Format</h3>
 <p>Values are stored in <code>font.lib</code> under the key <code>com.typesupply.LaserMeasure.measurements</code>.
 The data is stored as a dict of value names and dicts as values. The
@@ -66,6 +72,7 @@ com.typesupply.LaserMeasure.matchColor
 com.typesupply.LaserMeasure.highlightStrokeWidth
 com.typesupply.LaserMeasure.highlightOpacity
 com.typesupply.LaserMeasure.measurementTextSize
+com.typesupply.LaserMeasure.showMeasurementsHUD
 com.typesupply.LaserMeasure.testSelection
 com.typesupply.LaserMeasure.testSegments
 com.typesupply.LaserMeasure.testSegmentMatches

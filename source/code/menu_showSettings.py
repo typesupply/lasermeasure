@@ -1,3 +1,4 @@
+from mojo import roboFont
 from laserMeasure.settingsWindow import LaserMeasureSettingsWindowController
 
 roboFont.OpenWindow(LaserMeasureSettingsWindowController)

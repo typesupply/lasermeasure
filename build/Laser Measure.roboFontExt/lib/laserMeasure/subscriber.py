@@ -178,6 +178,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
 
     def loadDefaults(self):
         # load
+        self.showMeasurementsHUD = internalGetDefault("showMeasurementsHUD")
         self.triggerCharacter = internalGetDefault("triggerCharacter")
         self.doTestSelection = internalGetDefault("testSelection")
         self.doTestSegments = internalGetDefault("testSegments")
@@ -351,7 +352,8 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
                         self.currentDisplayFocalPoint = position
                         self.updateText()
             setCursorMode("searching")
-            self.hud.show(self.currentSelectionMeasurements is not None)
+            if self.showMeasurementsHUD:
+                self.hud.show(self.currentSelectionMeasurements is not None)
 
     def glyphEditorDidKeyUp(self, info):
         self.wantsMeasurements = False

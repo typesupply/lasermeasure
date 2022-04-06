@@ -1,8 +1,8 @@
 # Laser Measure
 
-To get the measurements of the current selection. Press and hold `d`.
-The width and height of the current selection will be displayed in
-an outlined rectangle.
+To get the measurements of the current selection. Press and hold trigger
+character (`d` is the default). The width and height of the current
+selection will be displayed in an outlined rectangle.
 
 To dynamically measure items, press and hold `d` and move the cursor
 to what you want to measure. The found width and height will be
@@ -43,6 +43,14 @@ values are defined in the "Named Values" sheet. If you define a width
 and no height, any height will be matched. If you define a height and
 no width, any width will be matched.
 
+### Reference List
+
+When the trigger character is pressed, a list of all named values
+will be shown in the upper right corner of the glyph editor. If
+you have points selected, a `+` button will appear. Pressing this
+will open the named values sheet with a new entry based on the
+current selection.
+
 ### Storage Format
 
 Values are stored in `font.lib` under the key `com.typesupply.LaserMeasure.measurements`.
@@ -65,6 +73,7 @@ com.typesupply.LaserMeasure.matchColor
 com.typesupply.LaserMeasure.highlightStrokeWidth
 com.typesupply.LaserMeasure.highlightOpacity
 com.typesupply.LaserMeasure.measurementTextSize
+com.typesupply.LaserMeasure.showMeasurementsHUD
 com.typesupply.LaserMeasure.testSelection
 com.typesupply.LaserMeasure.testSegments
 com.typesupply.LaserMeasure.testSegmentMatches

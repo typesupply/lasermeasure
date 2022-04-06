@@ -61,6 +61,11 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
 
         : Text Size:
         [__] points             @measurementTextSize
+
+        ---
+
+        :
+        [ ] Show Named Values List @showMeasurementsHUD
         """
         colorWellWidth = 100
         colorWellHeight = 20
@@ -68,7 +73,7 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
         descriptionData = dict(
             content=dict(
                 titleColumnWidth=125,
-                itemColumnWidth=150
+                itemColumnWidth=175
             ),
             testSelection=dict(
                 value=internalGetDefault("testSelection")
@@ -122,6 +127,9 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
                 width=numberEntryWidth,
                 valueType="number",
                 value=internalGetDefault("measurementTextSize")
+            ),
+            showMeasurementsHUD=dict(
+                value=internalGetDefault("showMeasurementsHUD")
             )
         )
         self.w = ezui.EZWindow(
