@@ -181,6 +181,43 @@ glif2 = """
 </glyph>
 """.strip()
 
+glif3 = """
+<?xml version='1.0' encoding='UTF-8'?>
+<glyph name="C" format="2">
+  <advance width="970"/>
+  <unicode hex="0043"/>
+  <outline>
+    <contour>
+      <point x="485" y="-10" type="curve" smooth="yes"/>
+      <point x="697" y="-10"/>
+      <point x="870" y="163"/>
+      <point x="870" y="375" type="curve" smooth="yes"/>
+      <point x="870" y="587"/>
+      <point x="697" y="760"/>
+      <point x="485" y="760" type="curve" smooth="yes"/>
+      <point x="273" y="760"/>
+      <point x="100" y="587"/>
+      <point x="100" y="375" type="curve" smooth="yes"/>
+      <point x="100" y="163"/>
+      <point x="273" y="-10"/>
+    </contour>
+    <contour>
+      <point x="545" y="183" type="curve"/>
+      <point x="435" y="183"/>
+      <point x="293" y="325"/>
+      <point x="293" y="435" type="curve" smooth="yes"/>
+      <point x="293" y="515"/>
+      <point x="345" y="567"/>
+      <point x="425" y="567" type="curve"/>
+      <point x="535" y="567"/>
+      <point x="677" y="425"/>
+      <point x="677" y="315" type="curve" smooth="yes"/>
+      <point x="677" y="235"/>
+      <point x="625" y="183"/>
+    </contour>
+  </outline>
+</glyph>
+""".strip()
 
 
 def testGlyph(glif):
@@ -237,6 +274,9 @@ def testGlyph(glif):
             x, y = location
             bot.oval(x-offset, y-offset, dotSize, dotSize)
 
+
+
 bot.newDrawing()
 testGlyph(glif1)
 testGlyph(glif2)
+testGlyph(glif3)
