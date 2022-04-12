@@ -188,7 +188,9 @@ defaultColorRotation = [
     (1, 0.5, 0, 0.5),
     (0, 1, 0, 0.5),
     (1, 0, 1, 0.5),
-    # (0, 0, 1, 0.5)
+    (0, 0, 1, 0.5),
+    (1, 0, 0, 0.5),
+    (0, 1, 1, 0.5)
 ]
 
 bot.newDrawing()
@@ -216,6 +218,7 @@ for name in font.glyphOrder:
         colors.append(color)
         bot.stroke(*color)
         bot.strokeWidth(15)
+        bot.lineCap("round")
         for segment in group:
             pen.moveTo(segment.original[0])
             if segment.type == "line":

@@ -23,49 +23,48 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
         = TwoColumnForm
 
         : Measure:
-        [ ] Selected Points     @testSelection
+        [ ] Selected Points                         @testSelection
         :
-        [ ] General             @testGeneral
+        [ ] General                                 @testGeneral
         :
-        [ ] Segments            @testSegments
+        [ ] Segments                                @testSegments
         :
-        [ ] Off Curve Handles   @testOffCurves
+        [ ] Off Curve Handles                       @testOffCurves
         :
-        [ ] Points              @testPoints
+        [ ] Points                                  @testPoints
         :
-        [ ] Anchors             @testAnchors
+        [ ] Anchors                                 @testAnchors
+        :
+        [ ] Highlight Matching Segments             @testSegmentMatches
+        :
+        [ ] Highlight Matching Off Curve Handles    @testOffCurveMatches
 
         ---
 
-        : Match:
-        [ ] Segments            @testSegmentMatches
-        :
-        [ ] Off Curve Handles   @testOffCurveMatches
+        : Auto Measure:
+        [ ] Matching Segments                       @autoTestSegmentMatches
 
         ---
 
         : Trigger Character:
-        [__]                    @triggerCharacter
+        [__]                                        @triggerCharacter
 
         : Base Color:
-        * ColorWell             @baseColor
-
-        : Match Color:
-        * ColorWell             @matchColor
+        * ColorWell                                 @baseColor
 
         : Highlight Width:
-        [__] pixels             @highlightStrokeWidth
+        [__] pixels                                 @highlightStrokeWidth
 
         : Highlight Opacity:
-        --X--                   @highlightOpacity
+        --X--                                       @highlightOpacity
 
         : Text Size:
-        [__] points             @measurementTextSize
+        [__] points                                 @measurementTextSize
 
         ---
 
-        :
-        [ ] Show Named Values List @showMeasurementsHUD
+        : HUD
+        [ ] Show Named Values List                  @showMeasurementsHUD
         """
         colorWellWidth = 100
         colorWellHeight = 20
@@ -73,7 +72,7 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
         descriptionData = dict(
             content=dict(
                 titleColumnWidth=125,
-                itemColumnWidth=175
+                itemColumnWidth=265
             ),
             testSelection=dict(
                 value=internalGetDefault("testSelection")
@@ -103,15 +102,13 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
                 width=20,
                 value=internalGetDefault("triggerCharacter")
             ),
+            autoTestSegmentMatches=dict(
+                value=internalGetDefault("autoTestSegmentMatches")
+            ),
             baseColor=dict(
                 width=colorWellWidth,
                 height=colorWellHeight,
                 color=tuple(internalGetDefault("baseColor"))
-            ),
-            matchColor=dict(
-                width=colorWellWidth,
-                height=colorWellHeight,
-                color=tuple(internalGetDefault("matchColor"))
             ),
             highlightStrokeWidth=dict(
                 width=numberEntryWidth,

@@ -34,6 +34,11 @@ dynamically measured:
   and a glyph's bounding box, hold option and hover between the anchor
   and the glyph's outline.
 
+## Automatic Segment Matching
+
+Segments that have the same structure and measurements will be highlighted
+with a rotating set of colors.
+
 ## Named Values
 
 Widths, heights or height and width combinations can be defined as
@@ -90,7 +95,7 @@ is ready:
 ```
 com.typesupply.LaserMeasure.triggerCharacter
 com.typesupply.LaserMeasure.baseColor
-com.typesupply.LaserMeasure.matchColor
+com.typesupply.LaserMeasure.matchColors
 com.typesupply.LaserMeasure.highlightStrokeWidth
 com.typesupply.LaserMeasure.highlightOpacity
 com.typesupply.LaserMeasure.measurementTextSize
@@ -103,6 +108,7 @@ com.typesupply.LaserMeasure.testOffCurveMatches
 com.typesupply.LaserMeasure.testPoints
 com.typesupply.LaserMeasure.testGeneral
 com.typesupply.LaserMeasure.testAnchors
+com.typesupply.LaserMeasure.autoTestSegmentMatches
 ```
 
 ```python

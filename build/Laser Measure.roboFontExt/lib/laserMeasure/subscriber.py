@@ -34,7 +34,6 @@ defaults = {
     extensionKeyStub + "showMeasurementsHUD" : True,
     extensionKeyStub + "triggerCharacter" : "d",
     extensionKeyStub + "baseColor" : (0, 0.3, 1, 0.8),
-    extensionKeyStub + "matchColor" : (1, 0.7, 0, 0.9),
     extensionKeyStub + "highlightStrokeWidth" : 10,
     extensionKeyStub + "highlightOpacity" : 0.2,
     extensionKeyStub + "measurementTextSize" : 12,
@@ -46,6 +45,16 @@ defaults = {
     extensionKeyStub + "testPoints" : True,
     extensionKeyStub + "testGeneral" : True,
     extensionKeyStub + "testAnchors" : True,
+    extensionKeyStub + "autoTestSegmentMatches" : True,
+    extensionKeyStub + "matchColors" : [
+        (1, 0.6, 0, 0.9),
+        (0.3, 1, 0, 0.9),
+        (0, 1, 0.8, 0.9),
+        (0.6, 0.5, 1, 0.9),
+        (1, 0.5, 0.5, 0.9),
+        (0.9, 0.9, 0, 0.9),
+        (0.5, 0.5, 0.5, 0.9)
+    ],
 }
 
 registerExtensionDefaults(defaults)
@@ -69,9 +78,10 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
     # Display Structure
     # -----------------
     #
-    # There are two containers:
-    # - one for background stuff
-    # - one for foreground stuff
+    # There are three containers:
+    # - passive (background): visible between key up and key down
+    # - active (background): visible with key down and mouse move
+    # - text (foreground): visible between key up and key down
     #
     # Each measurement type has its own layer
     # for displaying its data. Text is compiled
@@ -91,80 +101,74 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         # Glyph Editor Contents
         # ---------------------
 
-        self.containerBackground = window.extensionContainer(
+        self.activeContainer = window.extensionContainer(
             identifier=extensionKeyStub + "background",
             location="background",
             clear=True
         )
-        self.containerForeground = window.extensionContainer(
+        self.passiveContainer = window.extensionContainer(
+            identifier=extensionKeyStub + "autoBackground",
+            location="background",
+            clear=True
+        )
+        self.textContainer = window.extensionContainer(
             identifier=extensionKeyStub + "foreground",
             location="foreground",
             clear=True
         )
-        # text
-        self.textLayer = self.containerForeground.appendBaseSublayer(
+        # auto segment matches
+        self.autoSegmentMatchBaseLayer = self.passiveContainer.appendBaseSublayer(
             visible=True
         )
-        self.measurementsTextLayer = self.textLayer.appendTextLineSublayer(
+        # text
+        self.textBaseLayer = self.textContainer.appendBaseSublayer(
+            visible=True
+        )
+        self.measurementsTextLayer = self.textBaseLayer.appendTextLineSublayer(
             visible=False,
             name="measurements"
         )
-        self.namesTextLayer = self.textLayer.appendTextLineSublayer(
+        self.namesTextLayer = self.textBaseLayer.appendTextLineSublayer(
             visible=False,
             name="names"
         )
-        self.selectionMeasurementsTextLayer = self.textLayer.appendTextLineSublayer(
+        self.selectionMeasurementsTextLayer = self.textBaseLayer.appendTextLineSublayer(
             visible=False,
             name="selection"
         )
-        self.selectionNamesTextLayer = self.textLayer.appendTextLineSublayer(
+        self.selectionNamesTextLayer = self.textBaseLayer.appendTextLineSublayer(
             visible=False,
             name="selectionNames"
         )
         # outline
-        self.outlineBackground = self.containerBackground.appendBaseSublayer(
+        self.outlineBaseLayer = self.activeContainer.appendBaseSublayer(
             visible=False
         )
-        self.outlineForeground = self.containerForeground.appendBaseSublayer(
-            visible=False
-        )
-        self.outlineWidthLayer = self.outlineBackground.appendLineSublayer()
-        self.outlineHeightLayer = self.outlineBackground.appendLineSublayer()
+        self.outlineWidthLayer = self.outlineBaseLayer.appendLineSublayer()
+        self.outlineHeightLayer = self.outlineBaseLayer.appendLineSublayer()
         # segment
-        self.segmentBackground = self.containerBackground.appendBaseSublayer(
+        self.segmentBaseLayer = self.activeContainer.appendBaseSublayer(
             visible=False
         )
-        self.segmentForeground = self.containerForeground.appendBaseSublayer(
-            visible=False
-        )
-        self.segmentMatchHighlightLayer = self.segmentBackground.appendPathSublayer()
-        self.segmentHighlightLayer = self.segmentBackground.appendPathSublayer()
+        self.segmentMatchHighlightLayer = self.segmentBaseLayer.appendPathSublayer()
+        self.segmentHighlightLayer = self.segmentBaseLayer.appendPathSublayer()
         # handle
-        self.handleBackground = self.containerBackground.appendBaseSublayer(
+        self.handleBaseLayer = self.activeContainer.appendBaseSublayer(
             visible=False
         )
-        self.handleForeground = self.containerForeground.appendBaseSublayer(
-            visible=False
-        )
-        self.handleMatchHighlightLayer = self.handleBackground.appendPathSublayer()
-        self.handleHighlightLayer = self.handleBackground.appendPathSublayer()
+        self.handleMatchHighlightLayer = self.handleBaseLayer.appendPathSublayer()
+        self.handleHighlightLayer = self.handleBaseLayer.appendPathSublayer()
         # points
-        self.pointBackground = self.containerBackground.appendBaseSublayer(
+        self.pointBaseLayer = self.activeContainer.appendBaseSublayer(
             visible=False
         )
-        self.pointForeground = self.containerForeground.appendBaseSublayer(
-            visible=False
-        )
-        self.pointLineLayer = self.pointBackground.appendLineSublayer()
+        self.pointLineLayer = self.pointBaseLayer.appendLineSublayer()
         # anchor
-        self.anchorBackground = self.containerBackground.appendBaseSublayer(
+        self.anchorBaseLayer = self.activeContainer.appendBaseSublayer(
             visible=False
         )
-        self.anchorForeground = self.containerForeground.appendBaseSublayer(
-            visible=False
-        )
-        self.anchorWidthLayer = self.anchorBackground.appendLineSublayer()
-        self.anchorHeightLayer = self.anchorBackground.appendLineSublayer()
+        self.anchorWidthLayer = self.anchorBaseLayer.appendLineSublayer()
+        self.anchorHeightLayer = self.anchorBaseLayer.appendLineSublayer()
         # register for defaults change
         events.addObserver(
             self,
@@ -188,12 +192,19 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.doTestPoints = internalGetDefault("testPoints")
         self.doTestGeneral = internalGetDefault("testGeneral")
         self.doTestAnchors = internalGetDefault("testAnchors")
+        self.doAutoTestSegmentMatches = internalGetDefault("autoTestSegmentMatches")
         mainColor = internalGetDefault("baseColor")
         backgroundColor = UI.getDefault("glyphViewBackgroundColor")
-        matchColor = internalGetDefault("matchColor")
+        matchColors = internalGetDefault("matchColors")
         textSize = internalGetDefault("measurementTextSize")
         highlightOpacity = internalGetDefault("highlightOpacity")
         highlightWidth = internalGetDefault("highlightStrokeWidth")
+        # store needed
+        if not matchColors:
+            matchColors = [mainColor]
+        self.matchColors = matchColors
+        self.matchStrokeWidth = highlightWidth
+        self.matchStrokeOpacity = highlightOpacity
         # build
         lineAttributes = dict(
             strokeColor=mainColor,
@@ -221,9 +232,6 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         measurementTextAttributes.update(dict(
         ))
         namesTextAttributes = dict(textAttributes)
-        namesTextAttributes.update(dict(
-            backgroundColor=matchColor
-        ))
         selectionMeasurementsTextAttributes = dict(textAttributes)
         selectionMeasurementsTextAttributes.update(dict(
             borderColor=mainColor,
@@ -232,10 +240,6 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             borderWidth=1
         ))
         selectionNamesTextAttributes = dict(selectionMeasurementsTextAttributes)
-        selectionNamesTextAttributes.update(dict(
-            borderColor=matchColor,
-            fillColor=matchColor
-        ))
         # populate
         self.measurementsTextLayer.setPropertiesByName(textAttributes)
         self.namesTextLayer.setPropertiesByName(namesTextAttributes)
@@ -244,10 +248,10 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.outlineWidthLayer.setPropertiesByName(lineAttributes)
         self.outlineHeightLayer.setPropertiesByName(lineAttributes)
         self.segmentMatchHighlightLayer.setPropertiesByName(highlightAttributes)
-        self.segmentMatchHighlightLayer.setStrokeColor(matchColor)
+        self.segmentMatchHighlightLayer.setStrokeColor(mainColor)
         self.segmentHighlightLayer.setPropertiesByName(highlightAttributes)
         self.handleMatchHighlightLayer.setPropertiesByName(highlightAttributes)
-        self.handleMatchHighlightLayer.setStrokeColor(matchColor)
+        self.handleMatchHighlightLayer.setStrokeColor(mainColor)
         self.handleHighlightLayer.setPropertiesByName(highlightAttributes)
         self.pointLineLayer.setPropertiesByName(lineAttributes)
         self.anchorWidthLayer.setPropertiesByName(lineAttributes)
@@ -291,16 +295,17 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
                 v.sort()
 
     def destroy(self):
-        self.containerBackground.clearSublayers()
-        self.containerForeground.clearSublayers()
+        self.activeContainer.clearSublayers()
+        self.textContainer.clearSublayers()
         events.removeObserver(
             self,
             extensionID + ".defaultsChanged"
         )
 
     def hideLayers(self):
-        self.containerBackground.setVisible(False)
-        self.containerForeground.setVisible(False)
+        self.autoSegmentMatchBaseLayer.setVisible(False)
+        self.activeContainer.setVisible(False)
+        self.textContainer.setVisible(False)
         self.clearText()
 
     # Objects
@@ -335,6 +340,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
     currentSelectionMeasurements = None
     currentNames = None
     currentSelectionNames = None
+    currentAutoSegmentMatches = None
 
     def glyphEditorDidKeyDown(self, info):
         deviceState = info["deviceState"]
@@ -344,6 +350,12 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             self.wantsMeasurements = True
             selectionState = False
             glyph = info["glyph"]
+            if self.doAutoTestSegmentMatches:
+                self.autoMeasureSegments(
+                    glyph,
+                    deviceState
+                )
+            self.autoSegmentMatchBaseLayer.setVisible(self.doAutoTestSegmentMatches)
             if self.doTestSelection:
                 selectionState = self.measureSelection(
                     glyph,
@@ -420,18 +432,13 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             break
         self.findNames()
         setCursorMode(cursorMode)
-        self.anchorBackground.setVisible(anchorState)
-        self.anchorForeground.setVisible(anchorState)
-        self.handleBackground.setVisible(handleState)
-        self.handleForeground.setVisible(handleState)
-        self.segmentBackground.setVisible(segmentState)
-        self.segmentForeground.setVisible(segmentState)
-        self.pointBackground.setVisible(pointState)
-        self.pointForeground.setVisible(pointState)
-        self.outlineBackground.setVisible(outlineState)
-        self.outlineForeground.setVisible(outlineState)
-        self.containerBackground.setVisible(True)
-        self.containerForeground.setVisible(True)
+        self.anchorBaseLayer.setVisible(anchorState)
+        self.handleBaseLayer.setVisible(handleState)
+        self.segmentBaseLayer.setVisible(segmentState)
+        self.pointBaseLayer.setVisible(pointState)
+        self.outlineBaseLayer.setVisible(outlineState)
+        self.activeContainer.setVisible(True)
+        self.textContainer.setVisible(True)
         self.updateText()
 
     def _conditionalRectFallbacks(self, point, glyph, deviceState):
@@ -507,7 +514,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             x, y = self.currentDisplayFocalPoint
             x += cursorOffset
             y -= cursorOffset
-            self.textLayer.setPosition((x, y))
+            self.textBaseLayer.setPosition((x, y))
         displayOrder = [
             ("measurements", self.currentMeasurements, self.measurementsTextLayer, formatWidthHeightString),
             ("names", self.currentNames, self.namesTextLayer, formatNames),
@@ -545,8 +552,8 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             layer.setVisible(False)
         for layer in visible:
             layer.setVisible(True)
-        if not self.containerForeground.getVisible():
-            self.containerForeground.setVisible(True)
+        if not self.textContainer.getVisible():
+            self.textContainer.setVisible(True)
 
     # Names
     # -----
@@ -586,6 +593,37 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
     # These should place the measurements they find at
     # self.currentMeasurements and  the text updating
     # system will pull and format the data as needed.
+
+    def autoMeasureSegments(self,
+            glyph,
+            deviceState
+        ):
+        self.autoSegmentMatchBaseLayer.clearSublayers()
+        groups = glyph.getRepresentation(extensionKeyStub + "segmentGroups")
+        if groups == self.currentAutoSegmentMatches:
+            return
+        colors = list(self.matchColors)
+        strokeWidth = self.matchStrokeWidth * 0.5
+        for type, segments in groups:
+            color = colors.pop(0)
+            colors.append(color)
+            pen = merz.MerzPen()
+            for segment in segments:
+                pen.moveTo(segment[0])
+                if type == "line":
+                    pen.lineTo(segment[1])
+                elif type == "curve":
+                    pen.curveTo(*segment[1:])
+                elif type == "qcurve":
+                    pen.qCurveTo(*segment[1:])
+                pen.endPath()
+            layer = self.autoSegmentMatchBaseLayer.appendPathSublayer(
+                strokeColor=color,
+                fillColor=None,
+                strokeWidth=strokeWidth,
+                path=pen.path,
+                opacity=self.matchStrokeOpacity
+            )
 
     def measureSelection(self,
             glyph,
@@ -738,12 +776,12 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         ):
         layer = self.handleMatchHighlightLayer
         layerPen = merz.MerzPen()
-        target = HandleMatcher(points)
-        handles = glyph.getRepresentation(extensionKeyStub + "handles")
+        target = RelativeHandle(points)
+        handles = glyph.getRepresentation(extensionKeyStub + "relativeHandles")
         for handle in handles:
-            if target.compare(handle):
-                layerPen.moveTo(handle[0])
-                layerPen.lineTo(handle[1])
+            if handle == target:
+                layerPen.moveTo(handle.original[0])
+                layerPen.lineTo(handle.original[1])
                 layerPen.endPath()
         layer.setPath(layerPen.path)
 
@@ -780,17 +818,17 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         ):
         layer = self.segmentMatchHighlightLayer
         layerPen = merz.MerzPen()
-        target = SegmentMatcher(segmentType, segmentPoints)
-        segments = glyph.getRepresentation(extensionKeyStub + "segments")
-        for otherSegmentType, otherSegmentPoints in segments:
-            if target.compare(otherSegmentType, otherSegmentPoints):
-                layerPen.moveTo(otherSegmentPoints[0])
-                if otherSegmentType == "line":
-                    layerPen.lineTo(otherSegmentPoints[1])
-                elif otherSegmentType == "curve":
-                    layerPen.curveTo(*otherSegmentPoints[1:])
-                elif otherSegmentType == "qcurve":
-                    layerPen.qCurveTo(*otherSegmentPoints[1:])
+        target = RelativeSegment(segmentType, segmentPoints)
+        segments = glyph.getRepresentation(extensionKeyStub + "relativeSegments")
+        for segment in segments:
+            if segment == target:
+                layerPen.moveTo(segment.original[0])
+                if segment.type == "line":
+                    layerPen.lineTo(segment.original[1])
+                elif segment.type == "curve":
+                    layerPen.curveTo(*segment.original[1:])
+                elif segment.type == "qcurve":
+                    layerPen.qCurveTo(*segment.original[1:])
                 layerPen.endPath()
         layer.setPath(layerPen.path)
 
@@ -1219,53 +1257,80 @@ def getRightAngleVariance(angle, tolerance):
 # Segment Matching
 # ----------------
 
-class SegmentMatcher:
+class RelativeSegment:
 
     def __init__(self, type, segment):
         if type == "move":
             type = "line"
         self.type = type
         self.original = tuple(segment)
+        self._base = None
+        self._reversedBase = None
 
-    def compare(self, type, segment):
-        if segment == self.original:
-            return False
-        if makeReversedSegment(segment) == self.original:
-            return False
-        if type != self.type:
+    def __repr__(self):
+        o = repr(self.original)
+        b = repr(self.base)
+        return f"{o}-{b}"
+
+    def __hash__(self):
+        return hash(self.base)
+
+    def _get_base(self):
+        if self._base is None:
+            self._base = makePointsRelative(self.original)
+        return self._base
+
+    base = property(_get_base)
+
+    def _get_reversedBase(self):
+        if self._reversedBase is None:
+            points = reversePoints(self.original)
+            self._reversedBase = makePointsRelative(points)
+        return self._reversedBase
+
+    reversedBase = property(_get_reversedBase)
+
+    def __cmp__(self, other):
+        return self.__eq__(other)
+
+    def __eq__(self, other):
+        segment = other.base
+        # obvious mismatches
+        if other.type != self.type:
             return False
         if len(segment) != len(self.original):
             return False
-        segment = makeRelativeSegment(segment)
-        generators = (
-            ("base", None),
-            ("rotated90", [rotate90Transform.transformPoints]),
-            ("rotated180", [rotate180Transform.transformPoints]),
-            ("rotated270", [rotate270Transform.transformPoints]),
-            ("flippedHorizontal", [flipHorizontalTransform.transformPoints]),
-            ("flippedVertical", [flipVerticalTransform.transformPoints]),
-            ("reversedBase", [makeReversedSegment]),
-            ("reversedRotated90", [makeReversedSegment, rotate90Transform.transformPoints]),
-            ("reversedRotated180", [makeReversedSegment, rotate180Transform.transformPoints]),
-            ("reversedRotated270", [makeReversedSegment, rotate270Transform.transformPoints]),
-            ("reversedFlippedHorizontal", [makeReversedSegment, flipHorizontalTransform.transformPoints]),
-            ("reversedFlippedVertical", [makeReversedSegment, flipVerticalTransform.transformPoints]),
+        # obvious matches
+        if segment == self.base:
+            return True
+        if segment == self.reversedBase:
+            return True
+        # transform and compare
+        base = self.base
+        reversedBase = self.reversedBase
+        transformers = (
+            ("rotated90", [base, rotate90Transform.transformPoints]),
+            ("rotated180", [base, rotate180Transform.transformPoints]),
+            ("rotated270", [base, rotate270Transform.transformPoints]),
+            ("flippedHorizontal", [base, flipHorizontalTransform.transformPoints]),
+            ("flippedVertical", [base, flipVerticalTransform.transformPoints]),
+            ("reversedRotated90", [reversedBase, rotate90Transform.transformPoints]),
+            ("reversedRotated180", [reversedBase, rotate180Transform.transformPoints]),
+            ("reversedRotated270", [reversedBase, rotate270Transform.transformPoints]),
+            ("reversedFlippedHorizontal", [reversedBase, flipHorizontalTransform.transformPoints]),
+            ("reversedFlippedVertical", [reversedBase, flipVerticalTransform.transformPoints]),
         )
-        for attr, generator in generators:
+        for attr, (points, transformer) in transformers:
             if not hasattr(self, attr):
-                value = self.original
-                if generator is not None:
-                    for g in generator:
-                        value = g(value)
-                value = makeRelativeSegment(value)
-                setattr(self, attr, value)
-            value = getattr(self, attr)
-            if segment == value:
+                transformed = tuple(transformer(points))
+                setattr(self, attr, transformed)
+            transformed = getattr(self, attr)
+            if segment == transformed:
                 return True
         return False
 
 
-class SegmentsPen(BasePen):
+class RelativeSegmentsPen(BasePen):
 
     def __init__(self):
         super().__init__()
@@ -1277,20 +1342,20 @@ class SegmentsPen(BasePen):
         self.prevPoint = pt
 
     def _lineTo(self, pt):
-        self.segments.append(("line", (self.prevPoint, pt)))
+        self.segments.append(RelativeSegment("line", (self.prevPoint, pt)))
         self.prevPoint = pt
 
     def _curveToOne(self, pt1, pt2, pt3):
-        self.segments.append(("curve", (self.prevPoint, pt1, pt2, pt3)))
+        self.segments.append(RelativeSegment("curve", (self.prevPoint, pt1, pt2, pt3)))
         self.prevPoint = pt3
 
     def _qCurveToOne(self, pt1, pt2):
-        self.segments.append(("qcurve", (self.prevPoint, pt1, pt2)))
+        self.segments.append(RelativeSegment("qcurve", (self.prevPoint, pt1, pt2)))
         self.prevPoint = pt2
 
     def _closePath(self):
         if self.prevPoint != self.firstPoint:
-            self.segments.append(("line", (self.prevPoint, self.firstPoint)))
+            self.segments.append(RelativeSegment("line", (self.prevPoint, self.firstPoint)))
         self.firstPoint = None
         self.prevPoint = None
 
@@ -1298,34 +1363,64 @@ class SegmentsPen(BasePen):
         self.firstPoint = None
         self.prevPoint = None
 
+    def addComponent(self, *args, **kwargs):
+        pass
 
-def segmentsGlyphFactory(glyph):
-    segmentsPen = SegmentsPen()
+
+def relativeSegmentsGlyphFactory(glyph):
+    segmentsPen = RelativeSegmentsPen()
     glyph.draw(segmentsPen)
     return segmentsPen.segments
 
 defcon.registerRepresentationFactory(
     defcon.Glyph,
-    extensionKeyStub + "segments",
-    segmentsGlyphFactory
+    extensionKeyStub + "relativeSegments",
+    relativeSegmentsGlyphFactory
 )
 
+def segmentGroupsGlyphFactory(glyph):
+    segments = glyph.getRepresentation(extensionKeyStub + "relativeSegments")
+    tree = {}
+    for segment in segments:
+        key = None
+        for candidateKey in tree.keys():
+            if candidateKey == segment:
+                key = candidateKey
+                break
+        if key is None:
+            key = segment
+        if key not in tree:
+            tree[key] = []
+        tree[key].append(segment)
+    sorter = []
+    for key, segments in tree.items():
+        if len(segments) < 2:
+            continue
+        segments = tuple(sorted([s.original for s in segments]))
+        sorter.append((key.type, segments))
+    return list(sorted(sorter))
 
-def makeRelativePoint(point, basePoint):
+defcon.registerRepresentationFactory(
+    defcon.Glyph,
+    extensionKeyStub + "segmentGroups",
+    segmentGroupsGlyphFactory
+)
+
+def makePointRelative(point, basePoint):
     px, py = point
     bx, by = basePoint
     x = px - bx
     y = py - by
     return (x, y)
 
-def makeRelativeSegment(points):
+def makePointsRelative(points):
     points = [(0, 0)] + [
-        makeRelativePoint(p, points[0])
+        makePointRelative(p, points[0])
         for p in points[1:]
     ]
-    return points
+    return tuple(points)
 
-def makeReversedSegment(points):
+def reversePoints(points):
     return tuple(reversed(points))
 
 rotate90Transform = transform.Transform().rotate(math.radians(90))
@@ -1338,16 +1433,13 @@ flipVerticalTransform = transform.Scale(-1, 1)
 # Handle Matching
 # ---------------
 
-class HandleMatcher(SegmentMatcher):
+class RelativeHandle(RelativeSegment):
 
     def __init__(self, points):
-        super().__init__(None, points)
-
-    def compare(self, points):
-        return super().compare(None, points)
+        super().__init__("line", points)
 
 
-class HandlesPen(BasePen):
+class RelativeHandlesPen(BasePen):
 
     def __init__(self):
         super().__init__()
@@ -1360,13 +1452,13 @@ class HandlesPen(BasePen):
         self.prevPoint = pt
 
     def _curveToOne(self, pt1, pt2, pt3):
-        self.handles.append((self.prevPoint, pt1))
-        self.handles.append((pt2, pt3))
+        self.handles.append(RelativeHandle((self.prevPoint, pt1)))
+        self.handles.append(RelativeHandle((pt2, pt3)))
         self.prevPoint = pt3
 
     def _qCurveToOne(self, pt1, pt2):
-        self.handles.append((self.prevPoint, pt1))
-        self.handles.append((pt1, pt2))
+        self.handles.append(RelativeHandle((self.prevPoint, pt1)))
+        self.handles.append(RelativeHandle((pt1, pt2)))
         self.prevPoint = pt2
 
     def _closePath(self):
@@ -1375,15 +1467,16 @@ class HandlesPen(BasePen):
     def _endPath(self):
         self.prevPoint = None
 
-def handlesGlyphFactory(glyph):
-    handlesPen = HandlesPen()
+
+def relativeHandlesGlyphFactory(glyph):
+    handlesPen = RelativeHandlesPen()
     glyph.draw(handlesPen)
     return handlesPen.handles
 
 defcon.registerRepresentationFactory(
     defcon.Glyph,
-    extensionKeyStub + "handles",
-    handlesGlyphFactory
+    extensionKeyStub + "relativeHandles",
+    relativeHandlesGlyphFactory
 )
 
 
@@ -1434,7 +1527,7 @@ class LaserMeasureNamedValuesHUD:
         self.update()
 
     def update(self):
-        color = getExtensionDefault(extensionID + ".matchColor")
+        color = getExtensionDefault(extensionID + ".baseColor")
         r, g, b, a = color
         lineColor = (r, g, b, a * 0.25)
         backgroundColor = tuple(UI.getDefault("glyphViewBackgroundColor"))
