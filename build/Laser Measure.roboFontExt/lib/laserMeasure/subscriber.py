@@ -386,6 +386,8 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.hideLayers()
         setCursorMode(None)
 
+    # glyphEditorDidMouseMoveDelay = 0.05
+
     def glyphEditorDidMouseMove(self, info):
         if not self.wantsMeasurements:
             return
@@ -1116,6 +1118,7 @@ class NearestPointsPointPen(AbstractPointPen):
         self.contourOnCurveCounts = {}
         self._currentContour = 0
         self._pointIndex = 0
+        self._logicalCombinations = None
 
     def beginPath(self, **kwargs):
         pass
@@ -1134,89 +1137,78 @@ class NearestPointsPointPen(AbstractPointPen):
             self._pointIndex += 1
 
     def find(self, glyph, location):
+        font = glyph.font
+        rightAngleTolerance = 2
         collinearityTolerance = 0.2
-        rightAngleTolerance = 20
-        # calculate angle and distance from
-        # location to all points.
-        points = []
-        for contourIndex, pointIndex, point in self.onCurvePoints:
-            angle = bezierTools.calculateAngle(*sorted((location, point)))
-            angle = normalizeAngle(angle)
-            # eliminate wonky angles now
-            if getRightAngleVariance(angle, rightAngleTolerance) is None:
-                continue
-            distance = bezierTools.distanceFromPointToPoint(point, location)
-            points.append((angle, distance, contourIndex, pointIndex, point))
-        if len(points) < 2:
-            return
-        # test all combinations and filter combinations
-        # that don't meet various criteria. the filters
-        # should be organized from least to most expensive.
-        tested = set()
-        candidates = []
-        for angle1, distance1, contourIndex1, pointIndex1, point1 in points:
-            for angle2, distance2, contourIndex2, pointIndex2, point2 in points:
-                if point1 == point2:
-                    continue
-                # already tested
-                k = tuple(sorted((point1, point2)))
-                if k in tested:
-                    continue
-                # if point1 and point2 are on the same
-                # contour and they are next to each
-                # other sequentially, skip.
-                if contourIndex1 == contourIndex2:
-                    if abs(pointIndex1 - pointIndex2) == 1:
+        # cache the candidates for reuse
+        if self._logicalCombinations is None:
+            self._logicalCombinations = []
+            tested = set()
+            for contour1Index, point1Index, point1 in self.onCurvePoints:
+                contour1Count =  self.contourOnCurveCounts[contour1Index]
+                contour1 = glyph.contours[contour1Index]
+                contour1Width, contour1Height = getContourWidthHeight(contour1)
+                for contour2Index, point2Index, point2 in self.onCurvePoints:
+                    if point1 == point2:
                         continue
-                # if the location is not roughly in the middle
-                # of point1 and point2, skip.
-                totalEstimatedDistance = distance1 + distance2
-                t = distance1 / totalEstimatedDistance
-                if t < 0.35 or t > 0.65:
-                    continue
-                # if point1 - location - point2 are not
-                # relatively collinear, skip.
-                x1, y1 = point1
-                x2, y2 = location
-                x3, y3 = point2
-                dx1 = x2 - x1
-                dy1 = y2 - y1
-                dx2 = x3 - x2
-                dy2 = y3 - y2
-                a1 = math.atan2(dx1, dy1)
-                a2 = math.atan2(dx2, dy2)
-                collinearity = abs(a1 - a2)
-                if collinearity > collinearityTolerance:
-                    continue
-                # if the line between point1 and point2
-                # is not close to a right angle, skip.
-                angle = bezierTools.calculateAngle(point1, point2)
-                angle = normalizeAngle(angle)
-                angleVariation = getRightAngleVariance(angle, rightAngleTolerance)
-                if angleVariation is None:
-                    continue
-                angleVariation = round(angleVariation, -1)
-                # if the line between point1 and point2
-                # intersects a line in the glyph, skip.
-                line = ((x1, y1), (x3, y3))
-                intersections = tools.IntersectGlyphWithLine(
-                    glyph,
-                    line,
-                    canHaveComponent=False,
-                    addSideBearings=False
-                )
+                    # already tested
+                    k = tuple(sorted((point1, point2)))
+                    if k in tested:
+                        continue
+                    tested.add(k)
+                    # point1 and point2 can't be sequential on the same contour
+                    contour2Count =  self.contourOnCurveCounts[contour2Index]
+                    if contour1Index == contour2Index:
+                        if abs(point1Index - point2Index) == 1:
+                            continue
+                        if {point1Index, point2Index} == {0, contour1Count - 1}:
+                            continue
+                    # the distance must be lower than the max
+                    # if the line is not a 90 degree
+                    angle = bezierTools.calculateAngle(point1, point2)
+                    angle = normalizeAngle(angle)
+                    if not isRightAngle(angle, rightAngleTolerance):
+                        contour2 = glyph.contours[contour2Index]
+                        contour2Width, contour2Height = getContourWidthHeight(contour2)
+                        distanceLimit = max((contour1Width, contour1Height, contour2Width, contour2Height)) * 0.5
+                        distance = bezierTools.distanceFromPointToPoint(point1, point2)
+                        if distance > distanceLimit:
+                            continue
+                    # store
+                    self._logicalCombinations.append((point1, point2))
+        candidates = []
+        for point1, point2 in self._logicalCombinations:
+            # location must be midway-ish between points
+            distanceToCursor1 = bezierTools.distanceFromPointToPoint(point1, location)
+            distanceToCursor2 = bezierTools.distanceFromPointToPoint(location, point2)
+            distanceToCursor = distanceToCursor1 + distanceToCursor2
+            t = distanceToCursor1 / distanceToCursor
+            if t < 0.35 or t > 0.65:
+                continue
+            # point1-location-point2 must be close to collinear
+            if not isCollinear(point1, location, point2, collinearityTolerance):
+                continue
+            # store
+            candidates.append((distanceToCursor, (point1, point2)))
+        # sort by distance
+        candidates.sort()
+        # only test a limited number
+        for candidate in candidates[:10]:
+            point1, point2 = candidate[-1]
+            line = (point1, point2)
+            intersections = tools.IntersectGlyphWithLine(
+                glyph,
+                line,
+                canHaveComponent=False,
+                addSideBearings=False
+            )
+            if intersections:
                 for point in line:
                     if point in intersections:
                         intersections.remove(point)
-                if intersections:
-                    continue
-                # store
-                distance = bezierTools.distanceFromPointToPoint(point1, point2)
-                candidates.append((angleVariation, distance, (point1, point2)))
-        if not candidates:
-            return
-        candidates.sort()
-        return candidates[0][-1]
+            if intersections:
+                continue
+            return (point1, point2)
 
 
 def nearestPointSearcherGlyphFactory(glyph):
@@ -1239,20 +1231,39 @@ def roundTo(value, multiple):
     value = int(round(value / float(multiple))) * multiple
     return value
 
-def getRightAngleVariance(angle, tolerance):
-    angleVariation = None
+def isRightAngle(angle, tolerance):
     if angle <= tolerance:
-        angleVariation = angle
+        return True
     elif angle >= (90 - tolerance) and angle <= (90 + tolerance):
-        angleVariation = abs(90 - angle)
+        return True
     elif angle >= (180 - tolerance) and angle <= (180 + tolerance):
-        angleVariation = abs(180 - angle)
+        return True
     elif angle >= (270 - tolerance) and angle <= (270 + tolerance):
-        angleVariation = abs(270 - angle)
+        return True
     elif angle >= (360 - tolerance):
-        angleVariation = 360 - angle
-    return angleVariation
+        return True
+    return False
 
+def isCollinear(point1, location, point2, tolerance):
+    x1, y1 = point1
+    x2, y2 = location
+    x3, y3 = point2
+    dx1 = x2 - x1
+    dy1 = y2 - y1
+    dx2 = x3 - x2
+    dy2 = y3 - y2
+    a1 = math.atan2(dx1, dy1)
+    a2 = math.atan2(dx2, dy2)
+    collinearity = abs(a1 - a2)
+    if collinearity > tolerance:
+        return False
+    return True
+
+def getContourWidthHeight(contour):
+    xMin, yMin, xMax, yMax = contour.bounds
+    w = xMax - xMin
+    h = yMax - yMin
+    return (w, h)
 
 # Segment Matching
 # ----------------
