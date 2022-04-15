@@ -1106,11 +1106,6 @@ defcon.registerRepresentationFactory(
 # Collinear Points
 # ----------------
 
-def _formatCoordinateForSearching(x, y):
-    x = int(round(x))
-    y = int(round(y))
-    return f"{x},{y}"
-
 class NearestPointsPointPen(AbstractPointPen):
 
     def __init__(self):
@@ -1138,8 +1133,6 @@ class NearestPointsPointPen(AbstractPointPen):
 
     def find(self, glyph, location):
         font = glyph.font
-        rightAngleTolerance = 2
-        collinearityTolerance = 0.2
         # cache the candidates for reuse
         if self._logicalCombinations is None:
             self._logicalCombinations = []
@@ -1167,7 +1160,7 @@ class NearestPointsPointPen(AbstractPointPen):
                     # if the line is not a 90 degree
                     angle = bezierTools.calculateAngle(point1, point2)
                     angle = normalizeAngle(angle)
-                    if not isRightAngle(angle, rightAngleTolerance):
+                    if not isRightAngle(angle):
                         contour2 = glyph.contours[contour2Index]
                         contour2Width, contour2Height = getContourWidthHeight(contour2)
                         distanceLimit = max((contour1Width, contour1Height, contour2Width, contour2Height)) * 0.5
@@ -1177,6 +1170,7 @@ class NearestPointsPointPen(AbstractPointPen):
                     # store
                     self._logicalCombinations.append((point1, point2))
         candidates = []
+        unitsPerEm = font.info.unitsPerEm
         for point1, point2 in self._logicalCombinations:
             # location must be midway-ish between points
             distanceToCursor1 = bezierTools.distanceFromPointToPoint(point1, location)
@@ -1186,7 +1180,9 @@ class NearestPointsPointPen(AbstractPointPen):
             if t < 0.35 or t > 0.65:
                 continue
             # point1-location-point2 must be close to collinear
-            if not isCollinear(point1, location, point2, collinearityTolerance):
+            distance = bezierTools.distanceFromPointToPoint(point1, point2)
+            tolerance = calcCollinearityTolerance(distance, unitsPerEm)
+            if not isCollinear(point1, location, point2, tolerance):
                 continue
             # store
             candidates.append((distanceToCursor, (point1, point2)))
@@ -1231,7 +1227,8 @@ def roundTo(value, multiple):
     value = int(round(value / float(multiple))) * multiple
     return value
 
-def isRightAngle(angle, tolerance):
+def isRightAngle(angle):
+    tolerance = 1
     if angle <= tolerance:
         return True
     elif angle >= (90 - tolerance) and angle <= (90 + tolerance):
@@ -1245,6 +1242,7 @@ def isRightAngle(angle, tolerance):
     return False
 
 def isCollinear(point1, location, point2, tolerance):
+    tolerance = math.radians(tolerance)
     x1, y1 = point1
     x2, y2 = location
     x3, y3 = point2
@@ -1252,12 +1250,29 @@ def isCollinear(point1, location, point2, tolerance):
     dy1 = y2 - y1
     dx2 = x3 - x2
     dy2 = y3 - y2
-    a1 = math.atan2(dx1, dy1)
-    a2 = math.atan2(dx2, dy2)
+    a1 = math.atan2(dy1, dx1)
+    a2 = math.atan2(dy2, dx2)
     collinearity = abs(a1 - a2)
+    if collinearity > math.pi:
+        collinearity = math.pi * 2 - collinearity
     if collinearity > tolerance:
-        return False
+       return False
     return True
+
+maxCollinearityTolerance = 30
+minCollinearityTolerance = 2
+collinearityToleranceRange = maxCollinearityTolerance - minCollinearityTolerance
+
+def calcCollinearityTolerance(distance, unitsPerEm):
+    minDistance = unitsPerEm * 0.02
+    maxDistance = unitsPerEm * 0.5
+    if distance < minDistance:
+        return maxCollinearityTolerance
+    elif distance > maxDistance:
+        return minCollinearityTolerance
+    proportion = (distance - minDistance) / (maxDistance - minDistance)
+    tolerance = maxCollinearityTolerance - (collinearityToleranceRange * proportion)
+    return tolerance
 
 def getContourWidthHeight(contour):
     xMin, yMin, xMax, yMax = contour.bounds
