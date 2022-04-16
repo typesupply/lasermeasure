@@ -335,6 +335,14 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
     def fontMeasurementsChanged(self, info):
         self.loadNamedMeasurements()
 
+    needAutoSegmentHighlightRebuild = True
+
+    def glyphEditorDidSetGlyph(self, info):
+        self.needAutoSegmentHighlightRebuild = True
+
+    def glyphEditorGlyphDidChangeContours(self, info):
+        self.needAutoSegmentHighlightRebuild = True
+
     wantsMeasurements = False
     currentDisplayFocalPoint = None
     currentMeasurements = None
@@ -601,6 +609,8 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             glyph,
             deviceState
         ):
+        if not self.needAutoSegmentHighlightRebuild:
+            return
         self.autoSegmentMatchBaseLayer.clearSublayers()
         groups = glyph.getRepresentation(extensionKeyStub + "segmentGroups")
         if groups == self.currentAutoSegmentMatches:
@@ -626,6 +636,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
                 strokeWidth=strokeWidth,
                 path=pen.path
             )
+        self.needAutoSegmentHighlightRebuild = False
 
     def measureSelection(self,
             glyph,
@@ -1155,23 +1166,22 @@ class NearestPointsPointPen(AbstractPointPen):
                 for distanceToCursor2, contour2Index, point2Index, point2 in points:
                     if point1 == point2:
                         continue
-                    # already tested
+                    # already tested validity of combination
+                    combinationIdentifier = frozenset(((contour1Index, point1Index), (contour2Index, point2Index)))
+                    if not self._pointCombinationValidity.get(combinationIdentifier, True):
+                        continue
+                    self._pointCombinationValidity[combinationIdentifier] = False
+                    # already tested in this call
                     combination = frozenset((point1, point2))
                     if combination in tested:
                         continue
                     tested.add(combination)
-                    # already tested
-                    combinationIdentifier = frozenset(((contour1Index, point1Index), (contour2Index, point2Index)))
-                    if not self._pointCombinationValidity.get(combinationIdentifier, True):
-                        continue
                     # point1 and point2 can't be sequential on the same contour
                     contour2Count =  self.contourOnCurveCounts[contour2Index]
                     if contour1Index == contour2Index:
                         if abs(point1Index - point2Index) == 1:
-                            self._pointCombinationValidity[combinationIdentifier] = False
                             continue
                         if {point1Index, point2Index} == {0, contour1Count - 1}:
-                            self._pointCombinationValidity[combinationIdentifier] = False
                             continue
                     # the distance must be lower than the max
                     # if the line is not a multiple of 90 degrees
@@ -1183,7 +1193,6 @@ class NearestPointsPointPen(AbstractPointPen):
                         distanceLimit = max((contour1Width, contour1Height, contour2Width, contour2Height)) * 0.5
                         distance = bezierTools.distanceFromPointToPoint(point1, point2)
                         if distance > distanceLimit:
-                            self._pointCombinationValidity[combinationIdentifier] = False
                             continue
                     self._pointCombinationValidity[combinationIdentifier] = True
                     # location must be midway-ish between points
