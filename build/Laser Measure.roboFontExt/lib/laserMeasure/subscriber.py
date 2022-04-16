@@ -335,6 +335,14 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
     def fontMeasurementsChanged(self, info):
         self.loadNamedMeasurements()
 
+    needAutoSegmentHighlightRebuild = True
+
+    def glyphEditorDidSetGlyph(self, info):
+        self.needAutoSegmentHighlightRebuild = True
+
+    def glyphEditorGlyphDidChangeContours(self, info):
+        self.needAutoSegmentHighlightRebuild = True
+
     wantsMeasurements = False
     currentDisplayFocalPoint = None
     currentMeasurements = None
@@ -601,6 +609,8 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             glyph,
             deviceState
         ):
+        if not self.needAutoSegmentHighlightRebuild:
+            return
         self.autoSegmentMatchBaseLayer.clearSublayers()
         groups = glyph.getRepresentation(extensionKeyStub + "segmentGroups")
         if groups == self.currentAutoSegmentMatches:
@@ -626,6 +636,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
                 strokeWidth=strokeWidth,
                 path=pen.path
             )
+        self.needAutoSegmentHighlightRebuild = False
 
     def measureSelection(self,
             glyph,
@@ -1117,7 +1128,7 @@ class NearestPointsPointPen(AbstractPointPen):
         self.contourOnCurveCounts = {}
         self._currentContour = 0
         self._pointIndex = 0
-        self._logicalCombinations = None
+        self._pointCombinationValidity = {}
 
     def beginPath(self, **kwargs):
         pass
@@ -1137,22 +1148,34 @@ class NearestPointsPointPen(AbstractPointPen):
 
     def find(self, glyph, location):
         font = glyph.font
-        # cache the candidates for reuse
-        if self._logicalCombinations is None:
-            self._logicalCombinations = []
+        unitsPerEm = font.info.unitsPerEm
+        # filter to the closest points
+        points = []
+        for contourIndex, pointIndex, point in self.onCurvePoints:
+            distance = bezierTools.distanceFromPointToPoint(location, point)
+            points.append((distance, contourIndex, pointIndex, point))
+        points.sort()
+        points = points[:50]
+        candidates = []
+        while len(candidates) < 100:
             tested = set()
-            for contour1Index, point1Index, point1 in self.onCurvePoints:
+            for distanceToCursor1, contour1Index, point1Index, point1 in points:
                 contour1Count =  self.contourOnCurveCounts[contour1Index]
                 contour1 = glyph.contours[contour1Index]
                 contour1Width, contour1Height = getContourWidthHeight(contour1)
-                for contour2Index, point2Index, point2 in self.onCurvePoints:
+                for distanceToCursor2, contour2Index, point2Index, point2 in points:
                     if point1 == point2:
                         continue
-                    # already tested
-                    k = tuple(sorted((point1, point2)))
-                    if k in tested:
+                    # already tested validity of combination
+                    combinationIdentifier = frozenset(((contour1Index, point1Index), (contour2Index, point2Index)))
+                    if not self._pointCombinationValidity.get(combinationIdentifier, True):
                         continue
-                    tested.add(k)
+                    self._pointCombinationValidity[combinationIdentifier] = False
+                    # already tested in this call
+                    combination = frozenset((point1, point2))
+                    if combination in tested:
+                        continue
+                    tested.add(combination)
                     # point1 and point2 can't be sequential on the same contour
                     contour2Count =  self.contourOnCurveCounts[contour2Index]
                     if contour1Index == contour2Index:
@@ -1161,7 +1184,7 @@ class NearestPointsPointPen(AbstractPointPen):
                         if {point1Index, point2Index} == {0, contour1Count - 1}:
                             continue
                     # the distance must be lower than the max
-                    # if the line is not a 90 degree
+                    # if the line is not a multiple of 90 degrees
                     angle = bezierTools.calculateAngle(point1, point2)
                     angle = normalizeAngle(angle)
                     if not isRightAngle(angle):
@@ -1171,25 +1194,20 @@ class NearestPointsPointPen(AbstractPointPen):
                         distance = bezierTools.distanceFromPointToPoint(point1, point2)
                         if distance > distanceLimit:
                             continue
+                    self._pointCombinationValidity[combinationIdentifier] = True
+                    # location must be midway-ish between points
+                    distanceToCursor = distanceToCursor1 + distanceToCursor2
+                    t = distanceToCursor1 / distanceToCursor
+                    if t < 0.35 or t > 0.65:
+                        continue
+                    # point1-location-point2 must be close to collinear
+                    distance = bezierTools.distanceFromPointToPoint(point1, point2)
+                    tolerance = calcCollinearityTolerance(distance, unitsPerEm)
+                    if not isCollinear(point1, location, point2, tolerance):
+                        continue
                     # store
-                    self._logicalCombinations.append((point1, point2))
-        candidates = []
-        unitsPerEm = font.info.unitsPerEm
-        for point1, point2 in self._logicalCombinations:
-            # location must be midway-ish between points
-            distanceToCursor1 = bezierTools.distanceFromPointToPoint(point1, location)
-            distanceToCursor2 = bezierTools.distanceFromPointToPoint(location, point2)
-            distanceToCursor = distanceToCursor1 + distanceToCursor2
-            t = distanceToCursor1 / distanceToCursor
-            if t < 0.35 or t > 0.65:
-                continue
-            # point1-location-point2 must be close to collinear
-            distance = bezierTools.distanceFromPointToPoint(point1, point2)
-            tolerance = calcCollinearityTolerance(distance, unitsPerEm)
-            if not isCollinear(point1, location, point2, tolerance):
-                continue
-            # store
-            candidates.append((distanceToCursor, (point1, point2)))
+                    candidates.append((distanceToCursor, (point1, point2)))
+            break
         # sort by distance
         candidates.sort()
         # only test a limited number
