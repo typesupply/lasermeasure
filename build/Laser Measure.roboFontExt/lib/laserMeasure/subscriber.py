@@ -34,8 +34,8 @@ defaults = {
     extensionKeyStub + "showMeasurementsHUD" : True,
     extensionKeyStub + "triggerCharacter" : "d",
     extensionKeyStub + "baseColor" : (0, 0.3, 1, 0.8),
-    extensionKeyStub + "highlightStrokeWidth" : 10,
-    extensionKeyStub + "highlightOpacity" : 0.2,
+    extensionKeyStub + "highlightStrokeWidth" : 7,
+    extensionKeyStub + "highlightOpacity" : 0.3,
     extensionKeyStub + "measurementTextSize" : 12,
     extensionKeyStub + "testSelection" : True,
     extensionKeyStub + "testSegments" : True,
@@ -162,7 +162,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.pointBaseLayer = self.activeContainer.appendBaseSublayer(
             visible=False
         )
-        self.pointLineLayer = self.pointBaseLayer.appendLineSublayer()
+        self.pointHighlightLayer = self.pointBaseLayer.appendLineSublayer()
         # anchor
         self.anchorBaseLayer = self.activeContainer.appendBaseSublayer(
             visible=False
@@ -241,6 +241,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         ))
         selectionNamesTextAttributes = dict(selectionMeasurementsTextAttributes)
         # populate
+        self.autoSegmentMatchBaseLayer.setOpacity(highlightOpacity)
         self.measurementsTextLayer.setPropertiesByName(textAttributes)
         self.namesTextLayer.setPropertiesByName(namesTextAttributes)
         self.selectionMeasurementsTextLayer.setPropertiesByName(selectionMeasurementsTextAttributes)
@@ -253,7 +254,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.handleMatchHighlightLayer.setPropertiesByName(highlightAttributes)
         self.handleMatchHighlightLayer.setStrokeColor(mainColor)
         self.handleHighlightLayer.setPropertiesByName(highlightAttributes)
-        self.pointLineLayer.setPropertiesByName(lineAttributes)
+        self.pointHighlightLayer.setPropertiesByName(highlightAttributes)
         self.anchorWidthLayer.setPropertiesByName(lineAttributes)
         self.anchorHeightLayer.setPropertiesByName(lineAttributes)
         self.hud.update()
@@ -605,7 +606,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         if groups == self.currentAutoSegmentMatches:
             return
         colors = list(self.matchColors)
-        strokeWidth = self.matchStrokeWidth * 0.5
+        strokeWidth = self.matchStrokeWidth * 0.75
         for type, segments in groups:
             color = colors.pop(0)
             colors.append(color)
@@ -623,8 +624,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
                 strokeColor=color,
                 fillColor=None,
                 strokeWidth=strokeWidth,
-                path=pen.path,
-                opacity=self.matchStrokeOpacity
+                path=pen.path
             )
 
     def measureSelection(self,
@@ -781,6 +781,8 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         target = RelativeHandle(points)
         handles = glyph.getRepresentation(extensionKeyStub + "relativeHandles")
         for handle in handles:
+            if handle.isSame(target):
+                continue
             if handle == target:
                 layerPen.moveTo(handle.original[0])
                 layerPen.lineTo(handle.original[1])
@@ -823,6 +825,8 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         target = RelativeSegment(segmentType, segmentPoints)
         segments = glyph.getRepresentation(extensionKeyStub + "relativeSegments")
         for segment in segments:
+            if segment.isSame(target):
+                continue
             if segment == target:
                 layerPen.moveTo(segment.original[0])
                 if segment.type == "line":
@@ -848,8 +852,8 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         x2, y2 = point2
         width = int(round(abs(x1 - x2)))
         height = int(round(abs(y1 - y2)))
-        self.pointLineLayer.setStartPoint(point1)
-        self.pointLineLayer.setEndPoint(point2)
+        self.pointHighlightLayer.setStartPoint(point1)
+        self.pointHighlightLayer.setEndPoint(point2)
         self.currentMeasurements = (width, height)
         return True
 
@@ -1106,11 +1110,6 @@ defcon.registerRepresentationFactory(
 # Collinear Points
 # ----------------
 
-def _formatCoordinateForSearching(x, y):
-    x = int(round(x))
-    y = int(round(y))
-    return f"{x},{y}"
-
 class NearestPointsPointPen(AbstractPointPen):
 
     def __init__(self):
@@ -1138,8 +1137,6 @@ class NearestPointsPointPen(AbstractPointPen):
 
     def find(self, glyph, location):
         font = glyph.font
-        rightAngleTolerance = 2
-        collinearityTolerance = 0.2
         # cache the candidates for reuse
         if self._logicalCombinations is None:
             self._logicalCombinations = []
@@ -1167,7 +1164,7 @@ class NearestPointsPointPen(AbstractPointPen):
                     # if the line is not a 90 degree
                     angle = bezierTools.calculateAngle(point1, point2)
                     angle = normalizeAngle(angle)
-                    if not isRightAngle(angle, rightAngleTolerance):
+                    if not isRightAngle(angle):
                         contour2 = glyph.contours[contour2Index]
                         contour2Width, contour2Height = getContourWidthHeight(contour2)
                         distanceLimit = max((contour1Width, contour1Height, contour2Width, contour2Height)) * 0.5
@@ -1177,6 +1174,7 @@ class NearestPointsPointPen(AbstractPointPen):
                     # store
                     self._logicalCombinations.append((point1, point2))
         candidates = []
+        unitsPerEm = font.info.unitsPerEm
         for point1, point2 in self._logicalCombinations:
             # location must be midway-ish between points
             distanceToCursor1 = bezierTools.distanceFromPointToPoint(point1, location)
@@ -1186,7 +1184,9 @@ class NearestPointsPointPen(AbstractPointPen):
             if t < 0.35 or t > 0.65:
                 continue
             # point1-location-point2 must be close to collinear
-            if not isCollinear(point1, location, point2, collinearityTolerance):
+            distance = bezierTools.distanceFromPointToPoint(point1, point2)
+            tolerance = calcCollinearityTolerance(distance, unitsPerEm)
+            if not isCollinear(point1, location, point2, tolerance):
                 continue
             # store
             candidates.append((distanceToCursor, (point1, point2)))
@@ -1231,7 +1231,8 @@ def roundTo(value, multiple):
     value = int(round(value / float(multiple))) * multiple
     return value
 
-def isRightAngle(angle, tolerance):
+def isRightAngle(angle):
+    tolerance = 1
     if angle <= tolerance:
         return True
     elif angle >= (90 - tolerance) and angle <= (90 + tolerance):
@@ -1245,6 +1246,7 @@ def isRightAngle(angle, tolerance):
     return False
 
 def isCollinear(point1, location, point2, tolerance):
+    tolerance = math.radians(tolerance)
     x1, y1 = point1
     x2, y2 = location
     x3, y3 = point2
@@ -1252,12 +1254,29 @@ def isCollinear(point1, location, point2, tolerance):
     dy1 = y2 - y1
     dx2 = x3 - x2
     dy2 = y3 - y2
-    a1 = math.atan2(dx1, dy1)
-    a2 = math.atan2(dx2, dy2)
+    a1 = math.atan2(dy1, dx1)
+    a2 = math.atan2(dy2, dx2)
     collinearity = abs(a1 - a2)
+    if collinearity > math.pi:
+        collinearity = math.pi * 2 - collinearity
     if collinearity > tolerance:
-        return False
+       return False
     return True
+
+maxCollinearityTolerance = 30
+minCollinearityTolerance = 2
+collinearityToleranceRange = maxCollinearityTolerance - minCollinearityTolerance
+
+def calcCollinearityTolerance(distance, unitsPerEm):
+    minDistance = unitsPerEm * 0.02
+    maxDistance = unitsPerEm * 0.5
+    if distance < minDistance:
+        return maxCollinearityTolerance
+    elif distance > maxDistance:
+        return minCollinearityTolerance
+    proportion = (distance - minDistance) / (maxDistance - minDistance)
+    tolerance = maxCollinearityTolerance - (collinearityToleranceRange * proportion)
+    return tolerance
 
 def getContourWidthHeight(contour):
     xMin, yMin, xMax, yMax = contour.bounds
@@ -1275,6 +1294,7 @@ class RelativeSegment:
             type = "line"
         self.type = type
         self.original = tuple(segment)
+        self._reversedOriginal = None
         self._base = None
         self._reversedBase = None
 
@@ -1300,6 +1320,13 @@ class RelativeSegment:
         return self._reversedBase
 
     reversedBase = property(_get_reversedBase)
+
+    def _get_reversedOriginal(self):
+        if self._reversedOriginal is None:
+            self._reversedOriginal = reversePoints(self.original)
+        return self._reversedOriginal
+
+    reversedOriginal = property(_get_reversedOriginal)
 
     def __cmp__(self, other):
         return self.__eq__(other)
@@ -1338,6 +1365,13 @@ class RelativeSegment:
             transformed = getattr(self, attr)
             if segment == transformed:
                 return True
+        return False
+
+    def isSame(self, other):
+        if other.original == self.original:
+            return True
+        if other.original == self.reversedOriginal:
+            return True
         return False
 
 
