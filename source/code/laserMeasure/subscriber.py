@@ -1166,16 +1166,16 @@ class NearestPointsPointPen(AbstractPointPen):
                 for distanceToCursor2, contour2Index, point2Index, point2 in points:
                     if point1 == point2:
                         continue
-                    # already tested validity of combination
-                    combinationIdentifier = frozenset(((contour1Index, point1Index), (contour2Index, point2Index)))
-                    if not self._pointCombinationValidity.get(combinationIdentifier, True):
-                        continue
-                    self._pointCombinationValidity[combinationIdentifier] = False
                     # already tested in this call
                     combination = frozenset((point1, point2))
                     if combination in tested:
                         continue
                     tested.add(combination)
+                    # already tested validity of combination
+                    combinationIdentifier = frozenset(((contour1Index, point1Index), (contour2Index, point2Index)))
+                    if not self._pointCombinationValidity.get(combinationIdentifier, True):
+                        continue
+                    self._pointCombinationValidity[combinationIdentifier] = False
                     # point1 and point2 can't be sequential on the same contour
                     contour2Count =  self.contourOnCurveCounts[contour2Index]
                     if contour1Index == contour2Index:
