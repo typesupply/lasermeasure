@@ -763,9 +763,13 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             glyph,
             deviceState
         ):
+        window = self.getGlyphEditor()
+        editor = window.getGlyphView()
+        scale = editor.scale()
         hit = measureSegmentsAndHandles(
             point,
             glyph.getRepresentation(extensionKeyStub + "handlesAsLines"),
+            scale,
             self.handleHighlightLayer
         )
         if not self.doTestOffCurveMatches:
@@ -805,9 +809,13 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             glyph,
             deviceState
         ):
+        window = self.getGlyphEditor()
+        editor = window.getGlyphView()
+        scale = editor.scale()
         hit = measureSegmentsAndHandles(
             point,
             glyph,
+            scale,
             self.segmentHighlightLayer
         )
         if not self.doTestSegmentMatches:
@@ -1023,12 +1031,13 @@ def findAdjacentValues(
 def measureSegmentsAndHandles(
         point,
         glyph,
+        scale,
         highlightLayer
     ):
     x, y = point
     selector = glyph.getRepresentation("doodle.GlyphSelection")
     point = defcon.Point(point)
-    found = selector.segmentStrokeHitByPoint_(point, 5)
+    found = selector.segmentStrokeHitByPoint_(point, 5 / scale)
     if not found:
         highlightLayer.setVisible(False)
         return

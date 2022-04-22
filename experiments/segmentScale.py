@@ -51,7 +51,7 @@ class SegmentScaleTest(Subscriber):
         selector = glyph.getRepresentation("doodle.GlyphSelection")
         found = selector.segmentStrokeHitByPoint_(
             defcon.Point(cursorPoint),
-            radius / scale # XXX this is wrong
+            radius / scale
         )
         if not found:
             return
