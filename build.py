@@ -6,18 +6,18 @@ name = "Laser Measure"
 version = "0.1"
 developer = "Type Supply"
 developerURL = "http://typesupply.com"
-roboFontVersion = "4.1"
+roboFontVersion = "4.2"
 pycOnly = False
 menuItems = [
     dict(
         path="menu_showNamedValues.py",
-        preferredName="Named Values",
+        preferredName="Named Values…",
         shortKey=""
 
     ),
     dict(
         path="menu_showSettings.py",
-        preferredName="Edit Settings",
+        preferredName="Settings…",
         shortKey=""
     ),
 ]
