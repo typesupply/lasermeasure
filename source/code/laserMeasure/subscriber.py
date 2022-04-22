@@ -1556,13 +1556,16 @@ defcon.registerRepresentationFactory(
 # HUD
 # ---
 
+hudPadding = 10
+
 class LaserMeasureNamedValuesHUD:
 
     def __init__(self, glyphEditor, buttonCallback):
         self.items = {}
 
-        group = vanilla.Group((0, 0, 0, 0))
-        group.background = merz.MerzView((0, 0, 0, 0))
+        subview = vanilla.Group((0, 0, 0, 0))
+        subview.background = merz.MerzView((0, 0, 0, 0))
+        group = subview.group = vanilla.Group((hudPadding, hudPadding, -hudPadding, -hudPadding))
         group.button = vanilla.ImageButton(
             (-20, 0, 20, 20),
             bordered=False,
@@ -1570,17 +1573,18 @@ class LaserMeasureNamedValuesHUD:
         )
         group.textView = merz.MerzView((0, 25, 0, 0))
 
-        self.group = group
-        self.background = group.background.getMerzContainer()
+        self.subview = subview
+        self.background = subview.background.getMerzContainer()
+        self.background.setCornerRadius(hudPadding)
         self.button = group.button
         self.textView = group.textView
         self.textContainer = group.textView.getMerzContainer()
 
         self.update()
-        group.show(False)
+        subview.show(False)
 
         glyphEditor.addGlyphEditorSubview(
-            group,
+            subview,
             identifier=extensionID + ".LaserMeasureNamedValuesHUD",
             clear=True
         )
@@ -1588,11 +1592,11 @@ class LaserMeasureNamedValuesHUD:
     def show(self, showButton):
         if self.button.isVisible() != showButton:
             self.button.show(showButton)
-        if not self.group.isVisible():
-            self.group.show(True)
+        if not self.subview.isVisible():
+            self.subview.show(True)
 
     def hide(self):
-        self.group.show(False)
+        self.subview.show(False)
 
     def setItems(self, items):
         self.items = items
@@ -1603,11 +1607,10 @@ class LaserMeasureNamedValuesHUD:
         r, g, b, a = color
         lineColor = (r, g, b, a * 0.25)
         backgroundColor = tuple(UI.getDefault("glyphViewBackgroundColor"))
-        r, g, b, a = backgroundColor
-        backgroundColor = (r, g, b, 0.8)
 
         # Background
         self.background.setBackgroundColor(backgroundColor)
+        self.background.setOpacity(0.9)
 
         # Button
         image = AppKit.NSImage.alloc().initWithSize_((20, 20))
@@ -1682,11 +1685,13 @@ class LaserMeasureNamedValuesHUD:
         totalWidth = max((buttonWidth, totalWidth))
         textViewHeight = rowHeight * (len(items) + 1)
         totalHeight = textViewHeight + buttonHeight
+        totalWidth += hudPadding * 2
+        totalHeight += hudPadding * 2
         xStart = -25
         yStart = 10
 
-        x, y, w, h = self.group.getPosSize()
-        self.group.setPosSize((-totalWidth + xStart, yStart, totalWidth, totalHeight))
+        x, y, w, h = self.subview.getPosSize()
+        self.subview.setPosSize((-totalWidth + xStart, yStart, totalWidth, totalHeight))
         if items:
             items.insert(0, dict(name="", width="W", height="H"))
 
