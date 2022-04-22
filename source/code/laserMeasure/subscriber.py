@@ -286,6 +286,8 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
                 location = self.namedHeightMeasurements
                 key = height
                 name = f"H: {name}"
+            if location is None:
+                continue
             if key not in location:
                 location[key] = []
             location[key].append(name)
@@ -1699,7 +1701,10 @@ class LaserMeasureNamedValuesHUD:
         )
 
         nameWidths = []
-        numberWidths = []
+        numberWidths = [
+            calculateTextWidth("W", font),
+            calculateTextWidth("H", font)
+        ]
         for item in items:
             nameWidths.append(calculateTextWidth(item["name"], font))
             numberWidths.append(calculateTextWidth(item["width"], font))
