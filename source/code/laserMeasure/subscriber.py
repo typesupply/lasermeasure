@@ -95,8 +95,11 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         # Glyph Editor Overlay
         # --------------------
 
-        self.hud = LaserMeasureNamedValuesHUD(window, self.hudAddNamedValueCallback)
-
+        self.hud = LaserMeasureNamedValuesHUD(
+            window,
+            self.hudAddNamedValueCallback,
+            self.hudShowNamedValuesCallback
+        )
 
         # Glyph Editor Contents
         # ---------------------
@@ -505,6 +508,12 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             break
         font.lib[extensionKeyStub + "measurements"] = items
         self.glyphEditorDidKeyUp({})
+        window = UI.CurrentFontWindow()
+        NamedValuesSheetController(window.w, font)
+
+    def hudShowNamedValuesCallback(self, sender):
+        from .namedValuesSheet import NamedValuesSheetController
+        font = self.getFont()
         window = UI.CurrentFontWindow()
         NamedValuesSheetController(window.w, font)
 
@@ -1560,23 +1569,29 @@ hudPadding = 10
 
 class LaserMeasureNamedValuesHUD:
 
-    def __init__(self, glyphEditor, buttonCallback):
+    def __init__(self, glyphEditor, addButtonCallback, showButtonCallback):
         self.items = {}
 
         subview = vanilla.Group((0, 0, 0, 0))
         subview.background = merz.MerzView((0, 0, 0, 0))
         group = subview.group = vanilla.Group((hudPadding, hudPadding, -hudPadding, -hudPadding))
-        group.button = vanilla.ImageButton(
+        group.addButton = vanilla.ImageButton(
+            (-42, 0, 20, 20),
+            bordered=False,
+            callback=addButtonCallback
+        )
+        group.editButton = vanilla.ImageButton(
             (-20, 0, 20, 20),
             bordered=False,
-            callback=buttonCallback
+            callback=showButtonCallback
         )
         group.textView = merz.MerzView((0, 25, 0, 0))
 
         self.subview = subview
         self.background = subview.background.getMerzContainer()
         self.background.setCornerRadius(hudPadding)
-        self.button = group.button
+        self.addButton = group.addButton
+        self.editButton = group.editButton
         self.textView = group.textView
         self.textContainer = group.textView.getMerzContainer()
 
@@ -1590,8 +1605,8 @@ class LaserMeasureNamedValuesHUD:
         )
 
     def show(self, showButton):
-        if self.button.isVisible() != showButton:
-            self.button.show(showButton)
+        if self.addButton.isVisible() != showButton:
+            self.addButton.show(showButton)
         if not self.subview.isVisible():
             self.subview.show(True)
 
@@ -1612,22 +1627,41 @@ class LaserMeasureNamedValuesHUD:
         self.background.setBackgroundColor(backgroundColor)
         self.background.setOpacity(0.9)
 
-        # Button
+        # Add Button
         image = AppKit.NSImage.alloc().initWithSize_((20, 20))
-        path = AppKit.NSBezierPath.bezierPathWithOvalInRect_(((2, 2), (16, 16)))
-        path.moveToPoint_((10, 6))
-        path.lineToPoint_((10, 14))
-        path.moveToPoint_((6, 10))
-        path.lineToPoint_((14, 10))
-        path.setLineWidth_(1)
-        path.setLineCapStyle_(AppKit.NSLineCapStyleRound)
+        linePath = AppKit.NSBezierPath.bezierPathWithOvalInRect_(((2, 2), (16, 16)))
+        linePath.moveToPoint_((10, 6))
+        linePath.lineToPoint_((10, 14))
+        linePath.moveToPoint_((6, 10))
+        linePath.lineToPoint_((14, 10))
+        linePath.setLineWidth_(1)
+        linePath.setLineCapStyle_(AppKit.NSLineCapStyleRound)
         image.lockFocus()
         AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(*backgroundColor).set()
-        path.fill()
+        linePath.fill()
         AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(*color).set()
-        path.stroke()
+        linePath.stroke()
         image.unlockFocus()
-        self.button.setImage(imageObject=image)
+        self.addButton.setImage(imageObject=image)
+
+        # Edit Button
+        image = AppKit.NSImage.alloc().initWithSize_((20, 20))
+        linePath = AppKit.NSBezierPath.bezierPathWithOvalInRect_(((2, 2), (16, 16)))
+        linePath.setLineWidth_(1)
+        linePath.setLineCapStyle_(AppKit.NSLineCapStyleRound)
+        fillPath = AppKit.NSBezierPath.bezierPath()
+        fillPath.appendBezierPathWithOvalInRect_(((6, 9), (2, 2)))
+        fillPath.appendBezierPathWithOvalInRect_(((9, 9), (2, 2)))
+        fillPath.appendBezierPathWithOvalInRect_(((12, 9), (2, 2)))
+        image.lockFocus()
+        AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(*backgroundColor).set()
+        linePath.fill()
+        AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(*color).set()
+        linePath.stroke()
+        fillPath.fill()
+
+        image.unlockFocus()
+        self.editButton.setImage(imageObject=image)
 
         # Text
         items = self.items
