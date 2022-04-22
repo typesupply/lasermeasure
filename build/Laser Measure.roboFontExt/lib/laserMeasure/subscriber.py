@@ -95,8 +95,11 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         # Glyph Editor Overlay
         # --------------------
 
-        self.hud = LaserMeasureNamedValuesHUD(window, self.hudAddNamedValueCallback)
-
+        self.hud = LaserMeasureNamedValuesHUD(
+            window,
+            self.hudAddNamedValueCallback,
+            self.hudShowNamedValuesCallback
+        )
 
         # Glyph Editor Contents
         # ---------------------
@@ -508,6 +511,12 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         window = UI.CurrentFontWindow()
         NamedValuesSheetController(window.w, font)
 
+    def hudShowNamedValuesCallback(self, sender):
+        from .namedValuesSheet import NamedValuesSheetController
+        font = self.getFont()
+        window = UI.CurrentFontWindow()
+        NamedValuesSheetController(window.w, font)
+
     # Text
     # ----
 
@@ -763,9 +772,13 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             glyph,
             deviceState
         ):
+        window = self.getGlyphEditor()
+        editor = window.getGlyphView()
+        scale = editor.scale()
         hit = measureSegmentsAndHandles(
             point,
             glyph.getRepresentation(extensionKeyStub + "handlesAsLines"),
+            scale,
             self.handleHighlightLayer
         )
         if not self.doTestOffCurveMatches:
@@ -805,9 +818,13 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             glyph,
             deviceState
         ):
+        window = self.getGlyphEditor()
+        editor = window.getGlyphView()
+        scale = editor.scale()
         hit = measureSegmentsAndHandles(
             point,
             glyph,
+            scale,
             self.segmentHighlightLayer
         )
         if not self.doTestSegmentMatches:
@@ -1023,12 +1040,13 @@ def findAdjacentValues(
 def measureSegmentsAndHandles(
         point,
         glyph,
+        scale,
         highlightLayer
     ):
     x, y = point
     selector = glyph.getRepresentation("doodle.GlyphSelection")
     point = defcon.Point(point)
-    found = selector.segmentStrokeHitByPoint_(point, 5)
+    found = selector.segmentStrokeHitByPoint_(point, 5 / scale)
     if not found:
         highlightLayer.setVisible(False)
         return
@@ -1547,43 +1565,53 @@ defcon.registerRepresentationFactory(
 # HUD
 # ---
 
+hudPadding = 10
+
 class LaserMeasureNamedValuesHUD:
 
-    def __init__(self, glyphEditor, buttonCallback):
+    def __init__(self, glyphEditor, addButtonCallback, showButtonCallback):
         self.items = {}
 
-        group = vanilla.Group((0, 0, 0, 0))
-        group.background = merz.MerzView((0, 0, 0, 0))
-        group.button = vanilla.ImageButton(
+        subview = vanilla.Group((0, 0, 0, 0))
+        subview.background = merz.MerzView((0, 0, 0, 0))
+        group = subview.group = vanilla.Group((hudPadding, hudPadding, -hudPadding, -hudPadding))
+        group.addButton = vanilla.ImageButton(
+            (-42, 0, 20, 20),
+            bordered=False,
+            callback=addButtonCallback
+        )
+        group.editButton = vanilla.ImageButton(
             (-20, 0, 20, 20),
             bordered=False,
-            callback=buttonCallback
+            callback=showButtonCallback
         )
         group.textView = merz.MerzView((0, 25, 0, 0))
 
-        self.group = group
-        self.background = group.background.getMerzContainer()
-        self.button = group.button
+        self.subview = subview
+        self.background = subview.background.getMerzContainer()
+        self.background.setCornerRadius(hudPadding)
+        self.addButton = group.addButton
+        self.editButton = group.editButton
         self.textView = group.textView
         self.textContainer = group.textView.getMerzContainer()
 
         self.update()
-        group.show(False)
+        subview.show(False)
 
         glyphEditor.addGlyphEditorSubview(
-            group,
+            subview,
             identifier=extensionID + ".LaserMeasureNamedValuesHUD",
             clear=True
         )
 
     def show(self, showButton):
-        if self.button.isVisible() != showButton:
-            self.button.show(showButton)
-        if not self.group.isVisible():
-            self.group.show(True)
+        if self.addButton.isVisible() != showButton:
+            self.addButton.show(showButton)
+        if not self.subview.isVisible():
+            self.subview.show(True)
 
     def hide(self):
-        self.group.show(False)
+        self.subview.show(False)
 
     def setItems(self, items):
         self.items = items
@@ -1594,28 +1622,46 @@ class LaserMeasureNamedValuesHUD:
         r, g, b, a = color
         lineColor = (r, g, b, a * 0.25)
         backgroundColor = tuple(UI.getDefault("glyphViewBackgroundColor"))
-        r, g, b, a = backgroundColor
-        backgroundColor = (r, g, b, 0.8)
 
         # Background
         self.background.setBackgroundColor(backgroundColor)
+        self.background.setOpacity(0.9)
 
-        # Button
+        # Add Button
         image = AppKit.NSImage.alloc().initWithSize_((20, 20))
-        path = AppKit.NSBezierPath.bezierPathWithOvalInRect_(((2, 2), (16, 16)))
-        path.moveToPoint_((10, 6))
-        path.lineToPoint_((10, 14))
-        path.moveToPoint_((6, 10))
-        path.lineToPoint_((14, 10))
-        path.setLineWidth_(1)
-        path.setLineCapStyle_(AppKit.NSLineCapStyleRound)
+        linePath = AppKit.NSBezierPath.bezierPathWithOvalInRect_(((2, 2), (16, 16)))
+        linePath.moveToPoint_((10, 6))
+        linePath.lineToPoint_((10, 14))
+        linePath.moveToPoint_((6, 10))
+        linePath.lineToPoint_((14, 10))
+        linePath.setLineWidth_(1)
+        linePath.setLineCapStyle_(AppKit.NSLineCapStyleRound)
         image.lockFocus()
         AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(*backgroundColor).set()
-        path.fill()
+        linePath.fill()
         AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(*color).set()
-        path.stroke()
+        linePath.stroke()
         image.unlockFocus()
-        self.button.setImage(imageObject=image)
+        self.addButton.setImage(imageObject=image)
+
+        # Edit Button
+        image = AppKit.NSImage.alloc().initWithSize_((20, 20))
+        linePath = AppKit.NSBezierPath.bezierPathWithOvalInRect_(((2, 2), (16, 16)))
+        linePath.setLineWidth_(1)
+        linePath.setLineCapStyle_(AppKit.NSLineCapStyleRound)
+        fillPath = AppKit.NSBezierPath.bezierPath()
+        fillPath.appendBezierPathWithOvalInRect_(((6, 9), (2, 2)))
+        fillPath.appendBezierPathWithOvalInRect_(((9, 9), (2, 2)))
+        fillPath.appendBezierPathWithOvalInRect_(((12, 9), (2, 2)))
+        image.lockFocus()
+        AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(*backgroundColor).set()
+        linePath.fill()
+        AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(*color).set()
+        linePath.stroke()
+        fillPath.fill()
+
+        image.unlockFocus()
+        self.editButton.setImage(imageObject=image)
 
         # Text
         items = self.items
@@ -1673,11 +1719,13 @@ class LaserMeasureNamedValuesHUD:
         totalWidth = max((buttonWidth, totalWidth))
         textViewHeight = rowHeight * (len(items) + 1)
         totalHeight = textViewHeight + buttonHeight
+        totalWidth += hudPadding * 2
+        totalHeight += hudPadding * 2
         xStart = -25
         yStart = 10
 
-        x, y, w, h = self.group.getPosSize()
-        self.group.setPosSize((-totalWidth + xStart, yStart, totalWidth, totalHeight))
+        x, y, w, h = self.subview.getPosSize()
+        self.subview.setPosSize((-totalWidth + xStart, yStart, totalWidth, totalHeight))
         if items:
             items.insert(0, dict(name="", width="W", height="H"))
 

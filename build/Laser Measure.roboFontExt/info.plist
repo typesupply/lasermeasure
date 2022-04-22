@@ -8,7 +8,7 @@
 			<key>path</key>
 			<string>menu_showNamedValues.py</string>
 			<key>preferredName</key>
-			<string>Named Values</string>
+			<string>Named Values…</string>
 			<key>shortKey</key>
 			<string></string>
 		</dict>
@@ -16,7 +16,7 @@
 			<key>path</key>
 			<string>menu_showSettings.py</string>
 			<key>preferredName</key>
-			<string>Edit Settings</string>
+			<string>Settings…</string>
 			<key>shortKey</key>
 			<string></string>
 		</dict>
@@ -36,9 +36,9 @@
 	<key>requiresVersionMajor</key>
 	<string>4</string>
 	<key>requiresVersionMinor</key>
-	<string>1</string>
+	<string>2</string>
 	<key>timeStamp</key>
-	<real>1650158704.2518821</real>
+	<real>1650642100.6925912</real>
 	<key>version</key>
 	<string>0.1</string>
 </dict>
