@@ -104,6 +104,8 @@ class _NamedValuesSheetController(ezui.WindowController):
             fontData[name] = data
         if fontData:
             self.font.lib[libKey] = fontData
+        elif libKey in self.font.lib:
+            del self.font.lib[libKey]
         events.postEvent(
             extensionID + ".measurementsChanged",
             font=self.font
