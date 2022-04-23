@@ -1710,7 +1710,7 @@ class LaserMeasureNamedValuesHUD:
             numberWidths.append(calculateTextWidth(item["width"], font))
             numberWidths.append(calculateTextWidth(item["height"], font))
 
-        buttonWidth = 20
+        buttonWidth = 42
         buttonHeight = 30
         pointSize = textAttributes["pointSize"]
         nameWidth = 0
@@ -1722,7 +1722,9 @@ class LaserMeasureNamedValuesHUD:
         columnSpacing = pointSize * 0.75
         totalWidth = nameWidth + columnSpacing + numberWidth + columnSpacing + numberWidth
         totalWidth = max((buttonWidth, totalWidth))
-        textViewHeight = rowHeight * (len(items) + 1)
+        textViewHeight = 0
+        if items:
+            textViewHeight = rowHeight * (len(items) + 1)
         totalHeight = textViewHeight + buttonHeight
         totalWidth += hudPadding * 2
         totalHeight += hudPadding * 2
