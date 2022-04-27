@@ -1693,6 +1693,8 @@ class LaserMeasureNamedValuesHUD:
             figureStyle="tabular",
             fillColor=color
         )
+        nameTextAttributes = dict(textAttributes)
+        nameTextAttributes["horizontalAlignment"] = "left"
         font = merz.text.makeFont(
             "system",
             weight=textAttributes["weight"],
@@ -1760,7 +1762,7 @@ class LaserMeasureNamedValuesHUD:
                 text=name,
                 position=(0, y),
                 size=(nameWidth, rowHeight),
-                **textAttributes
+                **nameTextAttributes
             )
             # width
             self.textContainer.appendTextBoxSublayer(
