@@ -6,6 +6,7 @@ from fontTools.misc import arrayTools
 from fontTools.misc.fixedTools import otRound
 import defcon
 import AppKit
+import Quartz
 import vanilla
 from lib.tools import bezierTools
 from fontParts.world import RGlyph
@@ -36,6 +37,7 @@ defaults = {
     extensionKeyStub + "baseColor" : (0, 0.3, 1, 0.8),
     extensionKeyStub + "highlightStrokeWidth" : 7,
     extensionKeyStub + "highlightOpacity" : 0.3,
+    extensionKeyStub + "highlightAnimationDuration" : 2,
     extensionKeyStub + "measurementTextSize" : 12,
     extensionKeyStub + "testSelection" : True,
     extensionKeyStub + "testSegments" : True,
@@ -202,6 +204,9 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         textSize = internalGetDefault("measurementTextSize")
         highlightOpacity = internalGetDefault("highlightOpacity")
         highlightWidth = internalGetDefault("highlightStrokeWidth")
+        self.highlightWidth1 = highlightWidth
+        self.highlightWidth2 = highlightWidth * 3
+        self.highlightAnimationDuration = internalGetDefault("highlightAnimationDuration")
         # store needed
         if not matchColors:
             matchColors = [mainColor]
@@ -613,7 +618,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
     # and know which layers should be visible.
     #
     # These should place the measurements they find at
-    # self.currentMeasurements and  the text updating
+    # self.currentMeasurements and the text updating
     # system will pull and format the data as needed.
 
     def autoMeasureSegments(self,
@@ -627,7 +632,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         if groups == self.currentAutoSegmentMatches:
             return
         colors = list(self.matchColors)
-        strokeWidth = self.matchStrokeWidth * 0.75
+        strokeWidth = self.matchStrokeWidth
         for type, segments in groups:
             color = colors.pop(0)
             colors.append(color)
@@ -806,14 +811,16 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         layerPen = merz.MerzPen()
         target = RelativeHandle(points)
         handles = glyph.getRepresentation(extensionKeyStub + "relativeHandles")
+        haveMatch = False
         for handle in handles:
             if handle.isSame(target):
                 continue
             if handle == target:
+                haveMatch = True
                 layerPen.moveTo(handle.original[0])
                 layerPen.lineTo(handle.original[1])
                 layerPen.endPath()
-        layer.setPath(layerPen.path)
+        self._setMatchedPath(haveMatch, layer, layerPen)
 
     def measureSegments(self,
             point,
@@ -854,10 +861,12 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         layerPen = merz.MerzPen()
         target = RelativeSegment(segmentType, segmentPoints)
         segments = glyph.getRepresentation(extensionKeyStub + "relativeSegments")
+        haveMatch = False
         for segment in segments:
             if segment.isSame(target):
                 continue
             if segment == target:
+                haveMatch = True
                 layerPen.moveTo(segment.original[0])
                 if segment.type == "line":
                     layerPen.lineTo(segment.original[1])
@@ -866,7 +875,29 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
                 elif segment.type == "qcurve":
                     layerPen.qCurveTo(*segment.original[1:])
                 layerPen.endPath()
+        self._setMatchedPath(haveMatch, layer, layerPen)
+
+    def _setMatchedPath(self, haveMatch, layer, layerPen):
+        if not haveMatch:
+            layer.clearAnimation()
+            layer.setPath(layerPen.path)
+            return
+        if Quartz.CGPathEqualToPath(layer.getPath(), layerPen.path):
+            return
         layer.setPath(layerPen.path)
+        animationSettings = dict(
+            duration=self.highlightAnimationDuration,
+            repeatCount="loop",
+            timing="easeOut",
+            reverse=False,
+            restore=True
+        )
+        with layer.propertyGroup():
+            layer.setStrokeWidth(self.highlightWidth1)
+            layer.setOpacity(1.0)
+        with layer.propertyGroup(**animationSettings):
+            layer.setStrokeWidth(self.highlightWidth2)
+            layer.setOpacity(0)
 
     def measurePoints(self,
             point,
