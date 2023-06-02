@@ -22,17 +22,25 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
         content = """
         = TwoColumnForm
 
+        : Trigger Character:
+        [__]                                        @triggerCharacter
+
+        ---
+
+        : Laser Color:
+        * ColorWell                                 @baseColor
+
+        : Text Size:
+        [__] points                                 @measurementTextSize
+
+        ---
+
         : Measure:
         [ ] Selected Points                         @testSelection
-        :
         [ ] General                                 @testGeneral
-        :
         [ ] Segments                                @testSegments
-        :
         [ ] Off Curve Handles                       @testOffCurves
-        :
         [ ] Points                                  @testPoints
-        :
         [ ] Anchors                                 @testAnchors
 
         ---
@@ -40,36 +48,26 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
         : Highlight:
         [ ] Matching Segments                       @testSegmentMatches
         [ ] Matching Off Curve Handles              @testOffCurveMatches
-        [ ] Animate Matches                         @highlightAnimate
 
+        : Auto-Highlight:
+        [ ] Matching Segments                       @autoTestSegmentMatches
+
+        : Highlight Opacity:
+        --X--                                       @highlightOpacity
+
+        : Highlight Width:
+        [__] pixels                                 @highlightStrokeWidth
+
+        ---
+
+        : Animate Matches:
+        [ ]                                         @highlightAnimate
         : Animation Duration:
         [__] seconds                                @highlightAnimationDuration
 
         ---
 
-        : Auto Measure:
-        [ ] Matching Segments                       @autoTestSegmentMatches
-
-        ---
-
-        : Trigger Character:
-        [__]                                        @triggerCharacter
-
-        : Base Color:
-        * ColorWell                                 @baseColor
-
-        : Highlight Width:
-        [__] pixels                                 @highlightStrokeWidth
-
-        : Highlight Opacity:
-        --X--                                       @highlightOpacity
-
-        : Text Size:
-        [__] points                                 @measurementTextSize
-
-        ---
-
-        : HUD
+        : HUD:
         [ ] Show Named Values List                  @showMeasurementsHUD
         """
         colorWellWidth = 100
@@ -78,7 +76,7 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
         descriptionData = dict(
             content=dict(
                 titleColumnWidth=125,
-                itemColumnWidth=265
+                itemColumnWidth=220
             ),
             testSelection=dict(
                 value=internalGetDefault("testSelection")
@@ -124,6 +122,7 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
             highlightOpacity=dict(
                 minValue=0,
                 maxValue=1.0,
+                tickMarks=3,
                 value=internalGetDefault("highlightOpacity")
             ),
             highlightAnimate=dict(
@@ -156,7 +155,18 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
         self.w.open()
 
     def contentCallback(self, sender):
-        for key, value in sender.getItemValues().items():
+        self.setDefaults()
+
+    def triggerCharacterCallback(self, sender):
+        # Keep the character limited to a length of 1, and lowercase it.
+        character = sender.get()
+        if len(character) > 1:
+            character = character[-1]
+            self.w.getItem("triggerCharacter").set(character.lower())
+        self.setDefaults()
+
+    def setDefaults(self):
+        for key, value in self.w.getItemValues().items():
             existing = internalGetDefault(key)
             if existing == value:
                 continue
@@ -164,10 +174,6 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
         postEvent(
             extensionID + ".defaultsChanged"
         )
-
-    def triggerCharacterCallback(self, sender):
-        if len(sender.get()) == 1:
-            self.contentCallback(sender)
 
 
 note = """

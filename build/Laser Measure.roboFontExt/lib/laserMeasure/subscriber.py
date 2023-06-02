@@ -242,7 +242,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             verticalAlignment="top",
             pointSize=textSize,
             weight="bold",
-            figureStyle="regular"
+            figureStyle="tabular"
         )
         measurementTextAttributes = dict(textAttributes)
         measurementTextAttributes.update(dict(
