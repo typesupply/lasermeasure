@@ -34,10 +34,16 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
         [ ] Points                                  @testPoints
         :
         [ ] Anchors                                 @testAnchors
-        :
-        [ ] Highlight Matching Segments             @testSegmentMatches
-        :
-        [ ] Highlight Matching Off Curve Handles    @testOffCurveMatches
+
+        ---
+
+        : Highlight:
+        [ ] Matching Segments                       @testSegmentMatches
+        [ ] Matching Off Curve Handles              @testOffCurveMatches
+        [ ] Animate Matches                         @highlightAnimate
+
+        : Animation Duration:
+        [__] seconds                                @highlightAnimationDuration
 
         ---
 
@@ -68,7 +74,7 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
         """
         colorWellWidth = 100
         colorWellHeight = 20
-        numberEntryWidth = 75
+        numberEntryWidth = 40
         descriptionData = dict(
             content=dict(
                 titleColumnWidth=125,
@@ -99,7 +105,7 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
                 value=internalGetDefault("testOffCurveMatches")
             ),
             triggerCharacter=dict(
-                width=20,
+                valueWidth=numberEntryWidth,
                 value=internalGetDefault("triggerCharacter")
             ),
             autoTestSegmentMatches=dict(
@@ -111,7 +117,7 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
                 color=tuple(internalGetDefault("baseColor"))
             ),
             highlightStrokeWidth=dict(
-                width=numberEntryWidth,
+                valueWidth=numberEntryWidth,
                 valueType="integer",
                 value=internalGetDefault("highlightStrokeWidth")
             ),
@@ -120,8 +126,18 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
                 maxValue=1.0,
                 value=internalGetDefault("highlightOpacity")
             ),
+            highlightAnimate=dict(
+                value=internalGetDefault("highlightAnimate")
+            ),
+            highlightAnimationDuration=dict(
+                valueWidth=numberEntryWidth,
+                valueType="number",
+                minValue=0.1,
+                maxValue=5.0,
+                value=internalGetDefault("highlightAnimationDuration")
+            ),
             measurementTextSize=dict(
-                width=numberEntryWidth,
+                valueWidth=numberEntryWidth,
                 valueType="number",
                 value=internalGetDefault("measurementTextSize")
             ),

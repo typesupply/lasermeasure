@@ -37,7 +37,8 @@ defaults = {
     extensionKeyStub + "baseColor" : (0, 0.3, 1, 0.8),
     extensionKeyStub + "highlightStrokeWidth" : 7,
     extensionKeyStub + "highlightOpacity" : 0.3,
-    extensionKeyStub + "highlightAnimationDuration" : 2,
+    extensionKeyStub + "highlightAnimate" : True,
+    extensionKeyStub + "highlightAnimationDuration" : 1,
     extensionKeyStub + "measurementTextSize" : 12,
     extensionKeyStub + "testSelection" : True,
     extensionKeyStub + "testSegments" : True,
@@ -72,6 +73,8 @@ def internalSetDefault(key, value):
 # ----------
 # Subscriber
 # ----------
+
+emptyPath = Quartz.CGPathCreateMutable()
 
 class LaserMeasureSubscriber(subscriber.Subscriber):
 
@@ -155,13 +158,17 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.segmentBaseLayer = self.activeContainer.appendBaseSublayer(
             visible=False
         )
-        self.segmentMatchHighlightLayer = self.segmentBaseLayer.appendPathSublayer()
+        self.segmentMatchHighlightLayer = self.segmentBaseLayer.appendPathSublayer(
+            name="segmentMatchHighlightLayer"
+        )
         self.segmentHighlightLayer = self.segmentBaseLayer.appendPathSublayer()
         # handle
         self.handleBaseLayer = self.activeContainer.appendBaseSublayer(
             visible=False
         )
-        self.handleMatchHighlightLayer = self.handleBaseLayer.appendPathSublayer()
+        self.handleMatchHighlightLayer = self.handleBaseLayer.appendPathSublayer(
+            name="handleMatchHighlightLayer"
+        )
         self.handleHighlightLayer = self.handleBaseLayer.appendPathSublayer()
         # points
         self.pointBaseLayer = self.activeContainer.appendBaseSublayer(
@@ -206,6 +213,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         highlightWidth = internalGetDefault("highlightStrokeWidth")
         self.highlightWidth1 = highlightWidth
         self.highlightWidth2 = highlightWidth * 3
+        self.highlightAnimate = internalGetDefault("highlightAnimate")
         self.highlightAnimationDuration = internalGetDefault("highlightAnimationDuration")
         # store needed
         if not matchColors:
@@ -318,6 +326,15 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.activeContainer.setVisible(False)
         self.textContainer.setVisible(False)
         self.clearText()
+        # clear the animating layers so that
+        # they are starting from scratch with
+        # the next session. otherwise, a pref
+        # change and a match on the previous
+        # match won't reflect the pref change.
+        self.segmentMatchHighlightLayer.clearAnimation()
+        self.handleMatchHighlightLayer.clearAnimation()
+        self.segmentMatchHighlightLayer.setPath(emptyPath)
+        self.handleMatchHighlightLayer.setPath(emptyPath)
 
     # Objects
     # -------
@@ -878,26 +895,33 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self._setMatchedPath(haveMatch, layer, layerPen)
 
     def _setMatchedPath(self, haveMatch, layer, layerPen):
-        if not haveMatch:
-            layer.clearAnimation()
+        # static
+        if not self.highlightAnimate:
+            with layer.propertyGroup():
+                layer.setPath(layerPen.path)
+                layer.setStrokeWidth(self.highlightWidth1)
+                layer.setOpacity(1.0)
+        # animated
+        else:
+            if not haveMatch:
+                layer.clearAnimation()
+                layer.setPath(layerPen.path)
+                return
+            if Quartz.CGPathEqualToPath(layer.getPath(), layerPen.path):
+                return
             layer.setPath(layerPen.path)
-            return
-        if Quartz.CGPathEqualToPath(layer.getPath(), layerPen.path):
-            return
-        layer.setPath(layerPen.path)
-        animationSettings = dict(
-            duration=self.highlightAnimationDuration,
-            repeatCount="loop",
-            timing="easeOut",
-            reverse=False,
-            restore=True
-        )
-        with layer.propertyGroup():
-            layer.setStrokeWidth(self.highlightWidth1)
-            layer.setOpacity(1.0)
-        with layer.propertyGroup(**animationSettings):
-            layer.setStrokeWidth(self.highlightWidth2)
-            layer.setOpacity(0)
+            animationSettings = dict(
+                duration=self.highlightAnimationDuration,
+                repeatCount="loop",
+                reverse=False,
+                restore=True
+            )
+            with layer.propertyGroup():
+                layer.setStrokeWidth(self.highlightWidth1)
+                layer.setOpacity(1.0)
+            with layer.propertyGroup(**animationSettings):
+                layer.setStrokeWidth(self.highlightWidth2)
+                layer.setOpacity(0)
 
     def measurePoints(self,
             point,
@@ -1607,7 +1631,7 @@ class LaserMeasureNamedValuesHUD:
 
         subview = vanilla.Group((0, 0, 0, 0))
         subview.background = merz.MerzView((0, 0, 0, 0))
-        group = subview.group = vanilla.Group((hudPadding, hudPadding, -hudPadding, -hudPadding))
+        group = subview.group = vanilla.Group((hudPadding, hudPadding, 0, 0))
         group.addButton = vanilla.ImageButton(
             (-42, 0, 20, 20),
             bordered=False,
@@ -1618,11 +1642,12 @@ class LaserMeasureNamedValuesHUD:
             bordered=False,
             callback=showButtonCallback
         )
-        group.textView = merz.MerzView((0, 25, 0, 0))
+        group.textView = merz.MerzView((0, 0, 0, 0))
 
         self.subview = subview
         self.background = subview.background.getMerzContainer()
         self.background.setCornerRadius(hudPadding)
+        self.group = group
         self.addButton = group.addButton
         self.editButton = group.editButton
         self.textView = group.textView
@@ -1764,7 +1789,7 @@ class LaserMeasureNamedValuesHUD:
         xStart = -25
         yStart = 10
 
-        x, y, w, h = self.subview.getPosSize()
+        self.group.setPosSize((hudPadding, hudPadding, totalWidth - (hudPadding * 2), totalHeight - (hudPadding * 2)))
         self.subview.setPosSize((-totalWidth + xStart, yStart, totalWidth, totalHeight))
         if items:
             items.insert(0, dict(name="", width="W", height="H"))
@@ -1845,9 +1870,9 @@ def main():
     subscriber.registerGlyphEditorSubscriber(LaserMeasureSubscriber)
 
 if __name__ == "__main__":
-    if AppKit.NSUserName() in ("tal", "talleming"):
-        for key in defaults.keys():
-            removeExtensionDefault(key)
-        registerExtensionDefaults(defaults)
+    # if AppKit.NSUserName() in ("tal", "talleming"):
+    #     for key in defaults.keys():
+    #         removeExtensionDefault(key)
+    #     registerExtensionDefaults(defaults)
     LaserMeasureSubscriber.debug = True
     main()
