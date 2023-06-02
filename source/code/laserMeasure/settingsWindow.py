@@ -155,7 +155,7 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
         self.w.open()
 
     def contentCallback(self, sender):
-        self.set_defaults()
+        self.setDefaults()
 
     def triggerCharacterCallback(self, sender):
         # Keep the character limited to a length of 1, and lowercase it.
@@ -163,9 +163,9 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
         if len(character) > 1:
             character = character[-1]
             self.w.getItem("triggerCharacter").set(character.lower())
-        self.set_defaults()
+        self.setDefaults()
 
-    def set_defaults(self):
+    def setDefaults(self):
         for key, value in self.w.getItemValues().items():
             existing = internalGetDefault(key)
             if existing == value:
