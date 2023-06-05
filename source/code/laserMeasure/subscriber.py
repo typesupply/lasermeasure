@@ -60,6 +60,9 @@ defaults = {
     ],
 }
 
+persistentMakeTrigger = "\r" # return
+persistentBreakTrigger = "\u001b" # escape
+
 registerExtensionDefaults(defaults)
 
 def internalGetDefault(key):
@@ -69,6 +72,74 @@ def internalGetDefault(key):
 def internalSetDefault(key, value):
     key = extensionKeyStub + key
     setExtensionDefault(key, value)
+
+# ------------------
+# Persistent Storage
+# ------------------
+
+"""
+# To Do:
+# - write to lib instead of tempLib
+# - visualize
+#   - use a pair of factories (glyph and contour)
+#     to create
+#         {
+#             identifier : point
+#         }
+#     and use these for measuring
+# - UI for clearing all in a glyph
+# - UI for clearing all in a font?
+# - make a scripting API for this
+"""
+
+persistentPointsKey = extensionKeyStub + "persistentPointMeasurements"
+
+def _getPointIdentifiers(points):
+    return tuple(sorted([point.getIdentifier() for point in points]))
+
+def storePersistentPointMeasurementReferences(glyph, points):
+    f"""
+    Store the identifiers of points in the glyph lib
+    as a peristent measurement reference. The points
+    will be stored at the key:
+
+        {persistentPointsKey}
+
+    The identifiers will be stored as a sorted list
+    of identifiers. The sorting is required.
+    """
+    identifiers = _getPointIdentifiers(points)
+    if persistentPointsKey not in glyph.tempLib:
+        glyph.tempLib[persistentPointsKey] = []
+    existing = glyph.tempLib[persistentPointsKey]
+    if identifiers not in existing:
+        existing.append(identifiers)
+        glyph.tempLib[persistentPointsKey] = existing
+        print("linking:", identifiers)
+
+def removePersistentPointMeasurementReferences(glyph, points):
+    """
+    Remove the identifiers of points in the glyph
+    lib persistent measurement references.
+    """
+    if persistentPointsKey not in glyph.tempLib:
+        return
+    identifiers = _getPointIdentifiers(points)
+    existing = glyph.tempLib[persistentPointsKey]
+    if identifiers in existing:
+        existing.remove(identifiers)
+        print("breaking:", identifiers)
+    if existing:
+        glyph.tempLib[persistentPointsKey] = existing
+    else:
+        del glyph.tempLib[persistentPointsKey]
+
+def clearPersistentPointMeasurementReferences(glyph, points):
+    """
+    Clear all persistent point measurements in the glyph.
+    """
+    if persistentPointsKey in glyph.tempLib:
+        del glyph.tempLib[persistentPointsKey]
 
 # ----------
 # Subscriber
@@ -370,6 +441,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
     def glyphEditorGlyphDidChangeContours(self, info):
         self.needAutoSegmentHighlightRebuild = True
 
+    triggerPressed = False
     wantsMeasurements = False
     currentDisplayFocalPoint = None
     currentMeasurements = None
@@ -383,6 +455,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         if deviceState["keyDownWithoutModifiers"] != self.triggerCharacter:
             self.wantsMeasurements = False
         else:
+            self.triggerPressed = True
             self.wantsMeasurements = True
             selectionState = False
             glyph = info["glyph"]
@@ -412,10 +485,21 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
                 self.hud.show(self.currentSelectionMeasurements is not None)
 
     def glyphEditorDidKeyUp(self, info):
-        self.wantsMeasurements = False
-        self.hideLayers()
-        setCursorMode(None)
-        self.hud.hide()
+        deviceState = info["deviceState"]
+        keyDownWithoutModifiers = deviceState["keyDownWithoutModifiers"]
+        if self.triggerPressed:
+            if keyDownWithoutModifiers in (persistentMakeTrigger, persistentBreakTrigger):
+                glyph = info["glyph"]
+                if keyDownWithoutModifiers == persistentMakeTrigger:
+                    self.makePersistentMeasurement(glyph, deviceState)
+                elif keyDownWithoutModifiers == persistentBreakTrigger:
+                    self.breakPersistentMeasurement(glyph, deviceState)
+            elif keyDownWithoutModifiers == self.triggerCharacter:
+                self.triggerPressed = False
+                self.wantsMeasurements = False
+                self.hideLayers()
+                setCursorMode(None)
+                self.hud.hide()
 
     def glyphEditorDidMouseDown(self, info):
         self.wantsMeasurements = False
@@ -459,7 +543,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
                     cursorMode = "hit"
                     break
             if self.doTestPoints:
-                if self.measurePoints(point, glyph, deviceState):
+                if self.measureBetweenPoints(point, glyph, deviceState):
                     pointState = True
                     cursorMode = "hit"
                     break
@@ -675,24 +759,13 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             glyph,
             deviceState
         ):
-        xValues = set()
-        yValues = set()
-        for contour in glyph.selectedContours:
-            for point in contour.selectedPoints:
-                xValues.add(point.x)
-                yValues.add(point.y)
-        if len(xValues) < 2 and len(yValues) < 2:
+        points = getSelectedPoints(glyph)
+        measurements = measurePoints(points)
+        if not measurements:
             return
-        xMin = min(xValues)
-        xMax = max(xValues)
-        yMin = min(yValues)
-        yMax = max(yValues)
-        width = xMax - xMin
-        height = yMax - yMin
-        measurements = (width, height)
         if measurements == self.currentSelectionMeasurements:
             return
-        self.currentSelectionMeasurements = (width, height)
+        self.currentSelectionMeasurements = measurements
         return True
 
     def measureAnchors(self,
@@ -923,7 +996,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
                 layer.setStrokeWidth(self.highlightWidth2)
                 layer.setOpacity(0)
 
-    def measurePoints(self,
+    def measureBetweenPoints(self,
             point,
             glyph,
             deviceState
@@ -1000,6 +1073,17 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         with self.measurementsTextLayer.propertyGroup():
             self.currentMeasurements = (width, height)
         return True
+
+    # Persistent
+    # ----------
+
+    def makePersistentMeasurement(self, glyph, deviceState):
+        points = getSelectedPoints(glyph)
+        storePersistentPointMeasurementReferences(glyph, points)
+
+    def breakPersistentMeasurement(self, glyph, deviceState):
+        points = getSelectedPoints(glyph)
+        removePersistentPointMeasurementReferences(glyph, points)
 
 
 try:
@@ -1090,6 +1174,32 @@ def findAdjacentValues(
     d = int(round(abs(v1 - v2)))
     return v1, v2, d
 
+
+# Points
+# ------
+
+def getSelectedPoints(glyph):
+    points = []
+    for contour in glyph.selectedContours:
+        points.extend([point for point in contour.selectedPoints])
+    return points
+
+def measurePoints(points):
+    xValues = set()
+    yValues = set()
+    for point in points:
+        xValues.add(point.x)
+        yValues.add(point.y)
+    if len(xValues) < 2 and len(yValues) < 2:
+        return
+    xMin = min(xValues)
+    xMax = max(xValues)
+    yMin = min(yValues)
+    yMax = max(yValues)
+    width = xMax - xMin
+    height = yMax - yMin
+    measurements = (width, height)
+    return measurements
 
 # Segments and Handles
 # --------------------
