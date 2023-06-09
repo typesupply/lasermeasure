@@ -1081,6 +1081,9 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
 
     def makePersistentMeasurement(self, glyph, deviceState):
         points = getSelectedPoints(glyph)
+        if len(points) != 2:
+            AppKit.NSBeep()
+            return
         storePersistentPointMeasurementReferences(glyph, points)
 
     def breakPersistentMeasurement(self, glyph, deviceState):
