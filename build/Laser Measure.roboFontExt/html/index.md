@@ -123,3 +123,17 @@ setExtensionDefault(
     (1, 0, 1, 0.5)
 )
 ```
+
+## Scripting
+
+Named values font.lib key: `com.typesupply.LaserMeasure.measurements`
+
+Persistent measurement functions:
+
+```
+storePersistentPointMeasurementReferences
+removePersistentPointMeasurementReferences
+clearPersistentPointMeasurementReferences
+getPersistentPointMeasurementReferences
+getPersistentPointMeasurements
+```

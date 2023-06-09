@@ -25,15 +25,10 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
         : Trigger Character:
         [__]                                        @triggerCharacter
 
-        ---
-
-        : Laser Color:
-        * ColorWell                                 @baseColor
-
         : Text Size:
         [__] points                                 @measurementTextSize
 
-        ---
+        !§ Laser
 
         : Measure:
         [ ] Selected Points                         @testSelection
@@ -45,37 +40,64 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
 
         ---
 
-        : Highlight:
-        [ ] Matching Segments                       @testSegmentMatches
-        [ ] Matching Off Curve Handles              @testOffCurveMatches
+        : Color:
+        * ColorWell                                 @baseColor
 
-        : Auto-Highlight:
-        [ ] Matching Segments                       @autoTestSegmentMatches
+        ####################
 
-        : Highlight Opacity:
-        --X--                                       @highlightOpacity
+        !§ Highlight
 
-        : Highlight Width:
-        [__] pixels                                 @highlightStrokeWidth
+        : Match:
+        [ ] Segments                                @testSegmentMatches
+        [ ] Off Curve Handles                       @testOffCurveMatches
+
+        : Auto-Match:
+        [ ] Segments                                @autoTestSegmentMatches
 
         ---
 
-        : Animate Matches:
+        : Opacity:
+        --X--                                       @highlightOpacity
+
+        : Width:
+        [__] pixels                                 @highlightStrokeWidth
+
+        : Animate:
         [ ]                                         @highlightAnimate
         : Animation Duration:
         [__] seconds                                @highlightAnimationDuration
 
+        ####################
+
+        !§ Persistent Measurements
+
+        : Show:
+        [ ]                                         @showPersistentMeasurements
+
         ---
 
-        : HUD:
-        [ ] Show Named Values List                  @showMeasurementsHUD
+        : Color:
+        * ColorWell                                 @persistentMeasurementsColor
+
+        : Opacity:
+        --X--                                       @persistentMeasurementsOpacity
+
+        : Width:
+        [__] pixels                                 @persistentMeasurementsStrokeWidth
+
+        ####################
+
+        !§ HUD
+
+        : Show Named Values List:
+        [ ]                                         @showMeasurementsHUD
         """
         colorWellWidth = 100
         colorWellHeight = 20
         numberEntryWidth = 40
         descriptionData = dict(
             content=dict(
-                titleColumnWidth=125,
+                titleColumnWidth=160,
                 itemColumnWidth=220
             ),
             testSelection=dict(
@@ -139,6 +161,25 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
                 valueWidth=numberEntryWidth,
                 valueType="number",
                 value=internalGetDefault("measurementTextSize")
+            ),
+            showPersistentMeasurements=dict(
+                value=internalGetDefault("showPersistentMeasurements")
+            ),
+            persistentMeasurementsColor=dict(
+                width=colorWellWidth,
+                height=colorWellHeight,
+                color=internalGetDefault("persistentMeasurementsColor")
+            ),
+            persistentMeasurementsOpacity=dict(
+                minValue=0,
+                maxValue=1.0,
+                tickMarks=3,
+                value=internalGetDefault("persistentMeasurementsOpacity")
+            ),
+            persistentMeasurementsStrokeWidth=dict(
+                valueWidth=numberEntryWidth,
+                valueType="integer",
+                value=internalGetDefault("persistentMeasurementsStrokeWidth")
             ),
             showMeasurementsHUD=dict(
                 value=internalGetDefault("showMeasurementsHUD")
