@@ -691,7 +691,8 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         if not self.currentMeasurements:
             return
         w, h = self.currentMeasurements
-        names = self.namedWidthHeightMeasurements.get((w, h), [])
+        names = []
+        names += self.namedWidthHeightMeasurements.get((w, h), [])
         names += self.namedWidthMeasurements.get(w, [])
         names += self.namedHeightMeasurements.get(h, [])
         if names:
@@ -702,7 +703,8 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         if not self.currentSelectionMeasurements:
             return
         w, h = self.currentSelectionMeasurements
-        names = self.namedWidthHeightMeasurements.get((w, h), [])
+        names = []
+        names += self.namedWidthHeightMeasurements.get((w, h), [])
         names += self.namedWidthMeasurements.get(w, [])
         names += self.namedHeightMeasurements.get(h, [])
         if names:
