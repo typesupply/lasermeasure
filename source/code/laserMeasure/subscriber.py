@@ -270,19 +270,22 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.textBaseLayer = self.textContainer.appendBaseSublayer(
             visible=True
         )
-        self.measurementsTextLayer = self.textBaseLayer.appendTextLineSublayer(
+        self.measurementsTextContainer = self.textBaseLayer.appendBaseSublayer(
+            visible=False
+        )
+        self.measurementsTextLayer = self.measurementsTextContainer.appendTextLineSublayer(
             visible=False,
             name="measurements"
         )
-        self.namesTextLayer = self.textBaseLayer.appendTextLineSublayer(
+        self.namesTextLayer = self.measurementsTextContainer.appendTextLineSublayer(
             visible=False,
             name="names"
         )
-        self.selectionMeasurementsTextLayer = self.textBaseLayer.appendTextLineSublayer(
+        self.selectionMeasurementsTextLayer = self.measurementsTextContainer.appendTextLineSublayer(
             visible=False,
             name="selection"
         )
-        self.selectionNamesTextLayer = self.textBaseLayer.appendTextLineSublayer(
+        self.selectionNamesTextLayer = self.measurementsTextContainer.appendTextLineSublayer(
             visible=False,
             name="selectionNames"
         )
@@ -439,6 +442,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
     def hideLayers(self):
         self.autoSegmentMatchBaseLayer.setVisible(False)
         self.persistentMeasurementsBaseLayer.setVisible(False)
+        self.measurementsTextContainer.setVisible(False)
         self.activeContainer.setVisible(False)
         self.textContainer.setVisible(False)
         self.clearText()
@@ -535,6 +539,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             setCursorMode("searching")
             if self.showMeasurementsHUD:
                 self.hud.show(self.currentSelectionMeasurements is not None)
+            self.textContainer.setVisible(True)
 
     def glyphEditorDidKeyUp(self, info):
         deviceState = info["deviceState"]
@@ -612,7 +617,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.pointBaseLayer.setVisible(pointState)
         self.outlineBaseLayer.setVisible(outlineState)
         self.activeContainer.setVisible(True)
-        self.textContainer.setVisible(True)
+        self.measurementsTextContainer.setVisible(True)
         self.updateText()
 
     def _conditionalRectFallbacks(self, point, glyph, deviceState):
