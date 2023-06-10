@@ -542,8 +542,11 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             self.textContainer.setVisible(True)
 
     def glyphEditorDidKeyUp(self, info):
-        deviceState = info["deviceState"]
-        keyDownWithoutModifiers = deviceState["keyDownWithoutModifiers"]
+        if "deviceState" not in info:
+            keyDownWithoutModifiers = self.triggerCharacter
+        else:
+            deviceState = info["deviceState"]
+            keyDownWithoutModifiers = deviceState["keyDownWithoutModifiers"]
         if self.triggerPressed:
             if keyDownWithoutModifiers in (persistentMakeTrigger, persistentBreakTrigger):
                 glyph = info["glyph"]
