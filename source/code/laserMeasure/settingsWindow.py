@@ -47,7 +47,7 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
 
         !§ Highlight
 
-        : Match:
+        : Hover-Match:
         [ ] Segments                                @testSegmentMatches
         [ ] Off Curve Handles                       @testOffCurveMatches
 
