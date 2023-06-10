@@ -932,18 +932,19 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             scale,
             self.handleHighlightLayer
         )
-        if not self.doTestOffCurveMatches:
-            self.handleMatchHighlightLayer.setVisible(False)
-            return bool(hit)
         if hit:
             segmentType, points, measurements = hit
-            self._findMatchingHandles(
-                points,
-                glyph
-            )
-            self.handleMatchHighlightLayer.setVisible(True)
             self.currentMeasurements = measurements
-            return True
+            if self.doTestOffCurveMatches:
+                self._findMatchingHandles(
+                    points,
+                    glyph
+                )
+                self.handleMatchHighlightLayer.setVisible(True)
+                return True
+            else:
+                self.handleMatchHighlightLayer.setVisible(False)
+                return bool(hit)
         else:
             self.handleMatchHighlightLayer.setVisible(False)
 
