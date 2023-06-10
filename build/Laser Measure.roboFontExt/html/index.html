@@ -58,8 +58,18 @@ will be shown in the upper right corner of the glyph editor. If
 you have points selected, a <code>+</code> button will appear. Pressing this
 will open the named values sheet with a new entry based on the
 current selection.</p>
+<h2 id="persistent-measurements">Persistent Measurements</h2>
+<p>Two points in a glyph can be linked so that their measurements
+are always displayed when the trigger character is pressed.
+To create a link, select two points, press and hold the trigger
+character and press and release the return key. To remove a link,
+select two points, press and hold the trigger character and
+press and release the escape key.</p>
+<h2 id="settings">Settings</h2>
+<p>If you want to change a settings, use the settings window.</p>
+<h2 id="scripting">Scripting</h2>
 <h3 id="storage-format">Storage Format</h3>
-<p>Values are stored in <code>font.lib</code> under the key <code>com.typesupply.LaserMeasure.measurements</code>.
+<p>Named values are stored in <code>font.lib</code> under the key <code>com.typesupply.LaserMeasure.measurements</code>.
 The data is stored as a dict of value names and dicts as values. The
 value dict has <code>width</code> and/or <code>height</code> keys. If <code>width</code> is defined but
 <code>height</code> is not any height will match. If <code>height</code> if defined but
@@ -85,40 +95,12 @@ value dict has <code>width</code> and/or <code>height</code> keys. If <code>widt
 </code></pre></div>
 
 
-<h2 id="settings">Settings</h2>
-<p>If you want to change a settings, use the settings window. This window
-if only available in RoboFont 4.2 and later. If you are using an earlier
-version you'll need to do it with code using these keys until a window
-is ready:</p>
-<div class="codehilite"><pre><span></span><code><span class="nx">com</span><span class="p">.</span><span class="nx">typesupply</span><span class="p">.</span><span class="nx">LaserMeasure</span><span class="p">.</span><span class="nx">triggerCharacter</span>
-<span class="nx">com</span><span class="p">.</span><span class="nx">typesupply</span><span class="p">.</span><span class="nx">LaserMeasure</span><span class="p">.</span><span class="nx">baseColor</span>
-<span class="nx">com</span><span class="p">.</span><span class="nx">typesupply</span><span class="p">.</span><span class="nx">LaserMeasure</span><span class="p">.</span><span class="nx">matchColors</span>
-<span class="nx">com</span><span class="p">.</span><span class="nx">typesupply</span><span class="p">.</span><span class="nx">LaserMeasure</span><span class="p">.</span><span class="nx">highlightStrokeWidth</span>
-<span class="nx">com</span><span class="p">.</span><span class="nx">typesupply</span><span class="p">.</span><span class="nx">LaserMeasure</span><span class="p">.</span><span class="nx">highlightOpacity</span>
-<span class="nx">com</span><span class="p">.</span><span class="nx">typesupply</span><span class="p">.</span><span class="nx">LaserMeasure</span><span class="p">.</span><span class="nx">measurementTextSize</span>
-<span class="nx">com</span><span class="p">.</span><span class="nx">typesupply</span><span class="p">.</span><span class="nx">LaserMeasure</span><span class="p">.</span><span class="nx">showMeasurementsHUD</span>
-<span class="nx">com</span><span class="p">.</span><span class="nx">typesupply</span><span class="p">.</span><span class="nx">LaserMeasure</span><span class="p">.</span><span class="nx">testSelection</span>
-<span class="nx">com</span><span class="p">.</span><span class="nx">typesupply</span><span class="p">.</span><span class="nx">LaserMeasure</span><span class="p">.</span><span class="nx">testSegments</span>
-<span class="nx">com</span><span class="p">.</span><span class="nx">typesupply</span><span class="p">.</span><span class="nx">LaserMeasure</span><span class="p">.</span><span class="nx">testSegmentMatches</span>
-<span class="nx">com</span><span class="p">.</span><span class="nx">typesupply</span><span class="p">.</span><span class="nx">LaserMeasure</span><span class="p">.</span><span class="nx">testOffCurves</span>
-<span class="nx">com</span><span class="p">.</span><span class="nx">typesupply</span><span class="p">.</span><span class="nx">LaserMeasure</span><span class="p">.</span><span class="nx">testOffCurveMatches</span>
-<span class="nx">com</span><span class="p">.</span><span class="nx">typesupply</span><span class="p">.</span><span class="nx">LaserMeasure</span><span class="p">.</span><span class="nx">testPoints</span>
-<span class="nx">com</span><span class="p">.</span><span class="nx">typesupply</span><span class="p">.</span><span class="nx">LaserMeasure</span><span class="p">.</span><span class="nx">testGeneral</span>
-<span class="nx">com</span><span class="p">.</span><span class="nx">typesupply</span><span class="p">.</span><span class="nx">LaserMeasure</span><span class="p">.</span><span class="nx">testAnchors</span>
-<span class="nx">com</span><span class="p">.</span><span class="nx">typesupply</span><span class="p">.</span><span class="nx">LaserMeasure</span><span class="p">.</span><span class="nx">autoTestSegmentMatches</span>
-</code></pre></div>
-
-
-<div class="codehilite"><pre><span></span><code><span class="kn">from</span> <span class="nn">mojo.extensions</span> <span class="kn">import</span> <span class="n">setExtensionDefault</span>
-
-<span class="n">setExtensionDefault</span><span class="p">(</span>
-    <span class="s2">&quot;com.typesupply.LaserMeasure.triggerCharacter&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;m&quot;</span>
-<span class="p">)</span>
-<span class="n">setExtensionDefault</span><span class="p">(</span>
-    <span class="s2">&quot;com.typesupply.LaserMeasure.baseColor&quot;</span><span class="p">,</span>
-    <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">)</span>
-<span class="p">)</span>
+<h3 id="persistent-measurement-functions">Persistent measurement functions:</h3>
+<div class="codehilite"><pre><span></span><code>storePersistentPointMeasurementReferences
+removePersistentPointMeasurementReferences
+clearPersistentPointMeasurementReferences
+getPersistentPointMeasurementReferences
+getPersistentPointMeasurements
 </code></pre></div>
         </body>
         </html>

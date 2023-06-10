@@ -1,4 +1,5 @@
 import math
+import statistics
 from fontTools.misc import transform
 from fontTools.pens.basePen import BasePen
 from fontTools.pens.pointPen import AbstractPointPen
@@ -37,8 +38,11 @@ defaults = {
     extensionKeyStub + "baseColor" : (0, 0.3, 1, 0.8),
     extensionKeyStub + "highlightStrokeWidth" : 7,
     extensionKeyStub + "highlightOpacity" : 0.3,
-    extensionKeyStub + "highlightAnimate" : True,
+    extensionKeyStub + "highlightAnimate" : False,
     extensionKeyStub + "highlightAnimationDuration" : 1,
+    extensionKeyStub + "persistentMeasurementsColor" : (1, 0.5, 0, 1),
+    extensionKeyStub + "persistentMeasurementsStrokeWidth" : 20,
+    extensionKeyStub + "persistentMeasurementsOpacity" : 0.9,
     extensionKeyStub + "measurementTextSize" : 12,
     extensionKeyStub + "testSelection" : True,
     extensionKeyStub + "testSegments" : True,
@@ -49,6 +53,7 @@ defaults = {
     extensionKeyStub + "testGeneral" : True,
     extensionKeyStub + "testAnchors" : True,
     extensionKeyStub + "autoTestSegmentMatches" : True,
+    extensionKeyStub + "showPersistentMeasurements" : True,
     extensionKeyStub + "matchColors" : [
         (1, 0.6, 0, 0.9),
         (0.3, 1, 0, 0.9),
@@ -60,6 +65,12 @@ defaults = {
     ],
 }
 
+persistentMakeTrigger = "\r" # return
+persistentBreakTrigger = "\u001b" # escape
+
+cursorOffset = 7
+textBlockOffset = 5
+
 registerExtensionDefaults(defaults)
 
 def internalGetDefault(key):
@@ -69,6 +80,126 @@ def internalGetDefault(key):
 def internalSetDefault(key, value):
     key = extensionKeyStub + key
     setExtensionDefault(key, value)
+
+# ------------------
+# Persistent Storage
+# ------------------
+
+persistentPointsKey = extensionKeyStub + "persistentPointMeasurements"
+
+def _getPointIdentifiers(points):
+    return tuple(sorted([point.getIdentifier() for point in points]))
+
+def _getIdentifierToPointMapping(glyph):
+    # XXX make this a factory
+    identifierToPointMapping = {}
+    for contour in glyph:
+        for point in contour.points:
+            if point.identifier is None:
+                continue
+            identifierToPointMapping[point.identifier] = point
+    return identifierToPointMapping
+
+def storePersistentPointMeasurementReferences(glyph, points):
+    f"""
+    Store the identifiers of points in the glyph lib
+    as a peristent measurement reference. The points
+    will be stored at the key:
+
+        {persistentPointsKey}
+
+    The identifiers will be stored as a sorted list
+    of identifiers. The sorting is required.
+    """
+    identifiers = _getPointIdentifiers(points)
+    if persistentPointsKey not in glyph.lib:
+        glyph.lib[persistentPointsKey] = []
+    existing = glyph.lib[persistentPointsKey]
+    if identifiers not in existing:
+        existing.append(identifiers)
+        glyph.lib[persistentPointsKey] = existing
+
+def removePersistentPointMeasurementReferences(glyph, points):
+    """
+    Remove the identifiers of points in the glyph
+    lib persistent measurement references.
+    """
+    if persistentPointsKey not in glyph.lib:
+        return
+    identifiers = _getPointIdentifiers(points)
+    existing = glyph.lib[persistentPointsKey]
+    if identifiers in existing:
+        existing.remove(identifiers)
+    if existing:
+        glyph.lib[persistentPointsKey] = existing
+    else:
+        del glyph.lib[persistentPointsKey]
+
+def clearPersistentPointMeasurementReferences(glyph, points):
+    """
+    Clear all persistent point measurements in the glyph.
+    """
+    if persistentPointsKey in glyph.lib:
+        del glyph.lib[persistentPointsKey]
+
+def getPersistentPointMeasurementReferences(glyph):
+    """
+    Return all persistent measurement references.
+    """
+    return glyph.lib.get(persistentPointsKey, [])
+
+def getPersistentPointMeasurements(
+        glyph,
+        namedWidthHeightMeasurements=None,
+        namedWidthMeasurements=None,
+        namedHeightMeasurements=None
+    ):
+    """
+    Get measurement data about all linked points
+    in the glyph. The data will be a list of
+    dictionaries with this form:
+
+        {
+            points : list of point objects
+            positions : list of (x, y) for the points
+            measurements : (width, height)
+            names: matched named measurements
+        }
+    """
+    if namedWidthHeightMeasurements is None:
+        font = glyph.font
+        namedWidthHeightMeasurements, namedWidthMeasurements, namedHeightMeasurements = loadNamedMeasurements(font)
+    links = getPersistentPointMeasurementReferences(glyph)
+    if not links:
+        return []
+    identifierToPointMapping = _getIdentifierToPointMapping(glyph)
+    measurements = []
+    for link in links:
+        linkedPoints = []
+        for identifier in link:
+            point = identifierToPointMapping.get(identifier)
+            if point is None:
+                # XXX missing point.
+                # skip? destroy this link?
+                continue
+            linkedPoints.append(point)
+        if len(linkedPoints) >= 2:
+            linkedPointMeasurements = measurePoints(linkedPoints)
+            if linkedPointMeasurements is None:
+                continue
+            data = dict(
+                points=linkedPoints,
+                positions=[point.position for point in linkedPoints],
+                measurements=linkedPointMeasurements,
+                names=findMatchingNamedMeasurements(
+                    linkedPointMeasurements,
+                    namedWidthHeightMeasurements=namedWidthHeightMeasurements,
+                    namedWidthMeasurements=namedWidthMeasurements,
+                    namedHeightMeasurements=namedHeightMeasurements
+                )
+            )
+            measurements.append(data)
+    return measurements
 
 # ----------
 # Subscriber
@@ -123,6 +254,13 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             identifier=extensionKeyStub + "foreground",
             location="foreground",
             clear=True
+        )
+        # persistent measurements
+        self.persistentMeasurementsBaseLayer = self.passiveContainer.appendBaseSublayer(
+            visible=True
+        )
+        self.persistentMeasurementsTextBaseLayer = self.textContainer.appendBaseSublayer(
+            visible=True
         )
         # auto segment matches
         self.autoSegmentMatchBaseLayer = self.passiveContainer.appendBaseSublayer(
@@ -205,22 +343,28 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.doTestGeneral = internalGetDefault("testGeneral")
         self.doTestAnchors = internalGetDefault("testAnchors")
         self.doAutoTestSegmentMatches = internalGetDefault("autoTestSegmentMatches")
+        self.showPersistentMeasurements = internalGetDefault("showPersistentMeasurements")
         mainColor = internalGetDefault("baseColor")
         backgroundColor = UI.getDefault("glyphViewBackgroundColor")
         matchColors = internalGetDefault("matchColors")
         textSize = internalGetDefault("measurementTextSize")
         highlightOpacity = internalGetDefault("highlightOpacity")
         highlightWidth = internalGetDefault("highlightStrokeWidth")
+        persistentMeasurementsColor = internalGetDefault("persistentMeasurementsColor")
+        persistentMeasurementsStrokeWidth = internalGetDefault("persistentMeasurementsStrokeWidth")
+        persistentMeasurementsOpacity = internalGetDefault("persistentMeasurementsOpacity")
+        if not matchColors:
+            matchColors = [mainColor]
         self.highlightWidth1 = highlightWidth
         self.highlightWidth2 = highlightWidth * 3
         self.highlightAnimate = internalGetDefault("highlightAnimate")
         self.highlightAnimationDuration = internalGetDefault("highlightAnimationDuration")
-        # store needed
-        if not matchColors:
-            matchColors = [mainColor]
         self.matchColors = matchColors
         self.matchStrokeWidth = highlightWidth
         self.matchStrokeOpacity = highlightOpacity
+        self.persistentMeasurementsColor = persistentMeasurementsColor
+        self.persistentMeasurementsStrokeWidth = persistentMeasurementsStrokeWidth
+        self.persistentMeasurementsOpacity = persistentMeasurementsOpacity
         # build
         lineAttributes = dict(
             strokeColor=mainColor,
@@ -233,7 +377,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             strokeCap="round",
             opacity=highlightOpacity
         )
-        textAttributes = dict(
+        self.genericTextAttributes = textAttributes = dict(
             backgroundColor=mainColor,
             fillColor=backgroundColor,
             padding=(6, 3),
@@ -258,6 +402,8 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         selectionNamesTextAttributes = dict(selectionMeasurementsTextAttributes)
         # populate
         self.autoSegmentMatchBaseLayer.setOpacity(highlightOpacity)
+        self.persistentMeasurementsBaseLayer.setOpacity(persistentMeasurementsOpacity)
+        self.persistentMeasurementsTextBaseLayer.setOpacity(persistentMeasurementsOpacity)
         self.measurementsTextLayer.setPropertiesByName(textAttributes)
         self.namesTextLayer.setPropertiesByName(namesTextAttributes)
         self.selectionMeasurementsTextLayer.setPropertiesByName(selectionMeasurementsTextAttributes)
@@ -280,38 +426,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         font = self.getFont()
         stored = font.lib.get(libKey, {})
         self.hud.setItems(stored)
-        self.namedWidthMeasurements = {}
-        self.namedHeightMeasurements = {}
-        self.namedWidthHeightMeasurements = {}
-        for name, data in stored.items():
-            width = data.get("width")
-            height = data.get("height")
-            key = None
-            location = None
-            if width is not None and height is not None:
-                location = self.namedWidthHeightMeasurements
-                key = (width, height)
-            elif width is not None:
-                location = self.namedWidthMeasurements
-                key = width
-                name = f"W: {name}"
-            elif height is not None:
-                location = self.namedHeightMeasurements
-                key = height
-                name = f"H: {name}"
-            if location is None:
-                continue
-            if key not in location:
-                location[key] = []
-            location[key].append(name)
-        dicts = [
-            self.namedWidthMeasurements,
-            self.namedHeightMeasurements,
-            self.namedWidthHeightMeasurements
-        ]
-        for d in dicts:
-            for d, v in d.items():
-                v.sort()
+        self.namedWidthHeightMeasurements, self.namedWidthMeasurements, self.namedHeightMeasurements = loadNamedMeasurements(font)
 
     def destroy(self):
         self.activeContainer.clearSublayers()
@@ -323,6 +438,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
 
     def hideLayers(self):
         self.autoSegmentMatchBaseLayer.setVisible(False)
+        self.persistentMeasurementsBaseLayer.setVisible(False)
         self.activeContainer.setVisible(False)
         self.textContainer.setVisible(False)
         self.clearText()
@@ -363,13 +479,17 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.loadNamedMeasurements()
 
     needAutoSegmentHighlightRebuild = True
+    needPersistentMeasurementsRebuild = True
 
     def glyphEditorDidSetGlyph(self, info):
         self.needAutoSegmentHighlightRebuild = True
+        self.needPersistentMeasurementsRebuild = True
 
     def glyphEditorGlyphDidChangeContours(self, info):
         self.needAutoSegmentHighlightRebuild = True
+        self.needPersistentMeasurementsRebuild = True
 
+    triggerPressed = False
     wantsMeasurements = False
     currentDisplayFocalPoint = None
     currentMeasurements = None
@@ -383,6 +503,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         if deviceState["keyDownWithoutModifiers"] != self.triggerCharacter:
             self.wantsMeasurements = False
         else:
+            self.triggerPressed = True
             self.wantsMeasurements = True
             selectionState = False
             glyph = info["glyph"]
@@ -407,15 +528,30 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
                     if position != self.currentDisplayFocalPoint:
                         self.currentDisplayFocalPoint = position
                         self.updateText()
+            if self.showPersistentMeasurements:
+                self.updatePersistentMeasurements(glyph)
+                self.persistentMeasurementsBaseLayer.setVisible(True)
+            self.persistentMeasurementsTextBaseLayer.setVisible(self.showPersistentMeasurements)
             setCursorMode("searching")
             if self.showMeasurementsHUD:
                 self.hud.show(self.currentSelectionMeasurements is not None)
 
     def glyphEditorDidKeyUp(self, info):
-        self.wantsMeasurements = False
-        self.hideLayers()
-        setCursorMode(None)
-        self.hud.hide()
+        deviceState = info["deviceState"]
+        keyDownWithoutModifiers = deviceState["keyDownWithoutModifiers"]
+        if self.triggerPressed:
+            if keyDownWithoutModifiers in (persistentMakeTrigger, persistentBreakTrigger):
+                glyph = info["glyph"]
+                if keyDownWithoutModifiers == persistentMakeTrigger:
+                    self.makePersistentMeasurements(glyph, deviceState)
+                elif keyDownWithoutModifiers == persistentBreakTrigger:
+                    self.breakPersistentMeasurements(glyph, deviceState)
+            elif keyDownWithoutModifiers == self.triggerCharacter:
+                self.triggerPressed = False
+                self.wantsMeasurements = False
+                self.hideLayers()
+                setCursorMode(None)
+                self.hud.hide()
 
     def glyphEditorDidMouseDown(self, info):
         self.wantsMeasurements = False
@@ -459,7 +595,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
                     cursorMode = "hit"
                     break
             if self.doTestPoints:
-                if self.measurePoints(point, glyph, deviceState):
+                if self.measureBetweenPoints(point, glyph, deviceState):
                     pointState = True
                     cursorMode = "hit"
                     break
@@ -552,8 +688,6 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.currentSelectionNames = None
 
     def updateText(self):
-        cursorOffset = 7
-        textBlockOffset = 5
         if self.currentDisplayFocalPoint is not None:
             x, y = self.currentDisplayFocalPoint
             x += cursorOffset
@@ -606,10 +740,12 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.currentNames = None
         if not self.currentMeasurements:
             return
-        w, h = self.currentMeasurements
-        names = self.namedWidthHeightMeasurements.get((w, h), [])
-        names += self.namedWidthMeasurements.get(w, [])
-        names += self.namedHeightMeasurements.get(h, [])
+        names = findMatchingNamedMeasurements(
+            self.currentMeasurements,
+            namedWidthHeightMeasurements=self.namedWidthHeightMeasurements,
+            namedWidthMeasurements=self.namedWidthMeasurements,
+            namedHeightMeasurements=self.namedHeightMeasurements
+        )
         if names:
             self.currentNames = names
 
@@ -617,10 +753,12 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.currentSelectionNames = None
         if not self.currentSelectionMeasurements:
             return
-        w, h = self.currentSelectionMeasurements
-        names = self.namedWidthHeightMeasurements.get((w, h), [])
-        names += self.namedWidthMeasurements.get(w, [])
-        names += self.namedHeightMeasurements.get(h, [])
+        names = findMatchingNamedMeasurements(
+            self.currentSelectionMeasurements,
+            namedWidthHeightMeasurements=self.namedWidthHeightMeasurements,
+            namedWidthMeasurements=self.namedWidthMeasurements,
+            namedHeightMeasurements=self.namedHeightMeasurements
+        )
         if names:
             self.currentSelectionNames = names
 
@@ -675,24 +813,13 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             glyph,
             deviceState
         ):
-        xValues = set()
-        yValues = set()
-        for contour in glyph.selectedContours:
-            for point in contour.selectedPoints:
-                xValues.add(point.x)
-                yValues.add(point.y)
-        if len(xValues) < 2 and len(yValues) < 2:
+        points = getSelectedPoints(glyph)
+        measurements = measurePoints(points)
+        if not measurements:
             return
-        xMin = min(xValues)
-        xMax = max(xValues)
-        yMin = min(yValues)
-        yMax = max(yValues)
-        width = xMax - xMin
-        height = yMax - yMin
-        measurements = (width, height)
         if measurements == self.currentSelectionMeasurements:
             return
-        self.currentSelectionMeasurements = (width, height)
+        self.currentSelectionMeasurements = measurements
         return True
 
     def measureAnchors(self,
@@ -924,7 +1051,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
                 layer.setStrokeWidth(self.highlightWidth2)
                 layer.setOpacity(0)
 
-    def measurePoints(self,
+    def measureBetweenPoints(self,
             point,
             glyph,
             deviceState
@@ -1001,6 +1128,80 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         with self.measurementsTextLayer.propertyGroup():
             self.currentMeasurements = (width, height)
         return True
+
+    # Persistent
+    # ----------
+
+    def makePersistentMeasurements(self, glyph, deviceState):
+        points = getSelectedPoints(glyph)
+        if len(points) != 2:
+            AppKit.NSBeep()
+            return
+        storePersistentPointMeasurementReferences(glyph, points)
+        self.needPersistentMeasurementsRebuild = True
+        self.updatePersistentMeasurements(glyph)
+
+    def breakPersistentMeasurements(self, glyph, deviceState):
+        points = getSelectedPoints(glyph)
+        removePersistentPointMeasurementReferences(glyph, points)
+        self.needPersistentMeasurementsRebuild = True
+        self.updatePersistentMeasurements(glyph)
+
+    def updatePersistentMeasurements(self, glyph):
+        if not self.needPersistentMeasurementsRebuild:
+            return
+        persistentMeasurements = getPersistentPointMeasurements(
+            glyph,
+            namedWidthHeightMeasurements=self.namedWidthHeightMeasurements,
+            namedWidthMeasurements=self.namedWidthMeasurements,
+            namedHeightMeasurements=self.namedHeightMeasurements
+        )
+        self.persistentMeasurementsBaseLayer.clearSublayers()
+        layer = self.persistentMeasurementsTextBaseLayer.clearSublayers()
+        color = self.persistentMeasurementsColor
+        strokeWidth = self.persistentMeasurementsStrokeWidth
+        highlightProperties = dict(
+            fillColor=None,
+            strokeColor=color,
+            strokeWidth=strokeWidth,
+            strokeDash=(1, 2)
+        )
+        textAttributes = dict(self.genericTextAttributes)
+        textAttributes["horizontalAlignment"] = "center"
+        textAttributes["verticalAlignment"] = "center"
+        textAttributes["backgroundColor"] = color
+        for data in persistentMeasurements:
+            positions = data["positions"]
+            measurements = data["measurements"]
+            names = data["names"]
+            pen = merz.MerzPen()
+            pen.moveTo(positions[0])
+            for position in positions[1:]:
+                pen.lineTo(position)
+            pen.endPath()
+            layer = self.persistentMeasurementsBaseLayer.appendPathSublayer(
+                path=pen.path,
+                **highlightProperties
+            )
+            xPositions = set()
+            yPositions = set()
+            for (x, y) in positions:
+                xPositions.add(x)
+                yPositions.add(y)
+            xPosition = statistics.median(xPositions)
+            yPosition = statistics.median(yPositions)
+            text = [formatWidthHeightString(*measurements)]
+            if names:
+                text.append(formatNames(*names))
+            text = "\n".join(text)
+            textData = dict(textAttributes)
+            textData["text"] = text
+            textData["position"] = (xPosition, yPosition)
+            textData["offset"] = (0, 0)
+            layer = self.persistentMeasurementsTextBaseLayer.appendTextLineSublayer(
+                **textData
+            )
+        self.needPersistentMeasurementsRebuild = False
 
 
 try:
@@ -1091,6 +1292,87 @@ def findAdjacentValues(
     d = int(round(abs(v1 - v2)))
     return v1, v2, d
 
+
+# Named Measurements
+# ------------------
+
+def loadNamedMeasurements(font):
+    namedWidthMeasurements = {}
+    namedHeightMeasurements = {}
+    namedWidthHeightMeasurements = {}
+    libKey = extensionID + ".measurements"
+    if font is not None:
+        stored = font.lib.get(libKey, {})
+        for name, data in stored.items():
+            width = data.get("width")
+            height = data.get("height")
+            key = None
+            location = None
+            if width is not None and height is not None:
+                location = namedWidthHeightMeasurements
+                key = (width, height)
+            elif width is not None:
+                location = namedWidthMeasurements
+                key = width
+                name = f"W: {name}"
+            elif height is not None:
+                location = namedHeightMeasurements
+                key = height
+                name = f"H: {name}"
+            if location is None:
+                continue
+            if key not in location:
+                location[key] = []
+            location[key].append(name)
+        dicts = [
+            namedWidthMeasurements,
+            namedHeightMeasurements,
+            namedWidthHeightMeasurements
+        ]
+        for d in dicts:
+            for d, v in d.items():
+                v.sort()
+    return namedWidthHeightMeasurements, namedWidthMeasurements, namedHeightMeasurements
+
+
+def findMatchingNamedMeasurements(
+        measurements,
+        namedWidthHeightMeasurements,
+        namedWidthMeasurements,
+        namedHeightMeasurements
+    ):
+    w, h = measurements
+    names = []
+    names += namedWidthHeightMeasurements.get((w, h), [])
+    names += namedWidthMeasurements.get(w, [])
+    names += namedHeightMeasurements.get(h, [])
+    return names
+
+# Points
+# ------
+
+def getSelectedPoints(glyph):
+    points = []
+    for contour in glyph.selectedContours:
+        points.extend([point for point in contour.selectedPoints])
+    return points
+
+def measurePoints(points):
+    xValues = set()
+    yValues = set()
+    for point in points:
+        xValues.add(point.x)
+        yValues.add(point.y)
+    if len(xValues) < 2 and len(yValues) < 2:
+        return
+    xMin = min(xValues)
+    xMax = max(xValues)
+    yMin = min(yValues)
+    yMax = max(yValues)
+    width = xMax - xMin
+    height = yMax - yMin
+    measurements = (width, height)
+    return measurements
 
 # Segments and Handles
 # --------------------
@@ -1871,9 +2153,9 @@ def main():
     subscriber.registerGlyphEditorSubscriber(LaserMeasureSubscriber)
 
 if __name__ == "__main__":
-    # if AppKit.NSUserName() in ("tal", "talleming"):
-    #     for key in defaults.keys():
-    #         removeExtensionDefault(key)
-    #     registerExtensionDefaults(defaults)
+    if AppKit.NSUserName() in ("tal", "talleming"):
+        for key in defaults.keys():
+            removeExtensionDefault(key)
+        registerExtensionDefaults(defaults)
     LaserMeasureSubscriber.debug = True
     main()
