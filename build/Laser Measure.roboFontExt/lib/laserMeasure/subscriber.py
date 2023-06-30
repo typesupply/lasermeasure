@@ -443,11 +443,9 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
 
     def hideLayers(self):
         self.autoSegmentMatchBaseLayer.setVisible(False)
-        self.persistentMeasurementsBaseLayer.setVisible(False)
         self.measurementsTextContainer.setVisible(False)
         self.activeContainer.setVisible(False)
-        self.textContainer.setVisible(False)
-        self.clearText()
+        
         # clear the animating layers so that
         # they are starting from scratch with
         # the next session. otherwise, a pref
@@ -490,10 +488,19 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
     def glyphEditorDidSetGlyph(self, info):
         self.needAutoSegmentHighlightRebuild = True
         self.needPersistentMeasurementsRebuild = True
+        
+        if self.showPersistentMeasurements:
+            self.updatePersistentMeasurements(info['glyph'])
+            self.persistentMeasurementsBaseLayer.setVisible(True)
 
+    glyphEditorGlyphDidChangeContoursDelay = 0
     def glyphEditorGlyphDidChangeContours(self, info):
         self.needAutoSegmentHighlightRebuild = True
         self.needPersistentMeasurementsRebuild = True
+        
+        if self.showPersistentMeasurements:
+            self.updatePersistentMeasurements(info['glyph'])
+            self.persistentMeasurementsBaseLayer.setVisible(True)
 
     triggerPressed = False
     wantsMeasurements = False
@@ -552,19 +559,23 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         else:
             deviceState = info["deviceState"]
             keyDownWithoutModifiers = deviceState["keyDownWithoutModifiers"]
+        
+        glyph = info["glyph"]
+        # Only make persistent measurement if the trigger is pressed first.
         if self.triggerPressed:
             if keyDownWithoutModifiers in (persistentMakeTrigger, persistentBreakTrigger):
-                glyph = info["glyph"]
                 if keyDownWithoutModifiers == persistentMakeTrigger:
                     self.makePersistentMeasurements(glyph, deviceState)
-                elif keyDownWithoutModifiers == persistentBreakTrigger:
-                    self.breakPersistentMeasurements(glyph, deviceState)
-            elif keyDownWithoutModifiers == self.triggerCharacter:
-                self.triggerPressed = False
-                self.wantsMeasurements = False
-                self.hideLayers()
-                setCursorMode(None)
-                self.hud.hide()
+        # You can break the persistent measurement either way, though. Just select the segment, and hit the break trigger.
+        if keyDownWithoutModifiers == persistentBreakTrigger:
+            self.breakPersistentMeasurements(glyph, deviceState)
+        
+        if keyDownWithoutModifiers == self.triggerCharacter:
+            self.triggerPressed = False
+            self.wantsMeasurements = False
+            self.hideLayers()
+            setCursorMode(None)
+            self.hud.hide()
 
     def glyphEditorDidMouseDown(self, info):
         self.wantsMeasurements = False
