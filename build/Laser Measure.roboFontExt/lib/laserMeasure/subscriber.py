@@ -328,11 +328,13 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             "extensionDefaultsChanged",
             extensionID + ".defaultsChanged"
         )
+        
+        self.point = (0,0)
         # go
         self.clearText()
         self.loadNamedMeasurements()
         self.loadDefaults()
-
+        
     def loadDefaults(self):
         # load
         self.showMeasurementsHUD = internalGetDefault("showMeasurementsHUD")
@@ -540,6 +542,9 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             if self.showMeasurementsHUD:
                 self.hud.show(self.currentSelectionMeasurements is not None)
             self.textContainer.setVisible(True)
+            
+            # Start measuring now
+            self.initiateLaser(self.point, glyph, deviceState)
 
     def glyphEditorDidKeyUp(self, info):
         if "deviceState" not in info:
@@ -567,17 +572,19 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         setCursorMode(None)
 
     # glyphEditorDidMouseMoveDelay = 0.05
-
     def glyphEditorDidMouseMove(self, info):
+        self.point = tuple(info["locationInGlyph"])
+        deviceState = info["deviceState"]
+        glyph = info["glyph"]
+        self.initiateLaser(self.point, glyph, deviceState)
+        
+    def initiateLaser(self, point, glyph, deviceState):
         if not self.wantsMeasurements:
             return
         self.selectionMeasurementsTextLayer.setVisible(False)
-        glyph = info["glyph"]
         if not glyph.bounds:
             self.hideLayers()
             return
-        deviceState = info["deviceState"]
-        point = tuple(info["locationInGlyph"])
         self.currentDisplayFocalPoint = point
         self.currentMeasurements = None
         anchorState = False
