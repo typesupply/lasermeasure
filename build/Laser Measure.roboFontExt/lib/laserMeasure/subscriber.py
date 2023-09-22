@@ -328,11 +328,13 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             "extensionDefaultsChanged",
             extensionID + ".defaultsChanged"
         )
+        
+        self.point = (0,0)
         # go
         self.clearText()
         self.loadNamedMeasurements()
         self.loadDefaults()
-
+        
     def loadDefaults(self):
         # load
         self.showMeasurementsHUD = internalGetDefault("showMeasurementsHUD")
@@ -441,11 +443,9 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
 
     def hideLayers(self):
         self.autoSegmentMatchBaseLayer.setVisible(False)
-        self.persistentMeasurementsBaseLayer.setVisible(False)
         self.measurementsTextContainer.setVisible(False)
         self.activeContainer.setVisible(False)
-        self.textContainer.setVisible(False)
-        self.clearText()
+        
         # clear the animating layers so that
         # they are starting from scratch with
         # the next session. otherwise, a pref
@@ -488,10 +488,19 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
     def glyphEditorDidSetGlyph(self, info):
         self.needAutoSegmentHighlightRebuild = True
         self.needPersistentMeasurementsRebuild = True
+        
+        if self.showPersistentMeasurements:
+            self.updatePersistentMeasurements(info['glyph'])
+            self.persistentMeasurementsBaseLayer.setVisible(True)
 
+    glyphEditorGlyphDidChangeContoursDelay = 0
     def glyphEditorGlyphDidChangeContours(self, info):
         self.needAutoSegmentHighlightRebuild = True
         self.needPersistentMeasurementsRebuild = True
+        
+        if self.showPersistentMeasurements:
+            self.updatePersistentMeasurements(info['glyph'])
+            self.persistentMeasurementsBaseLayer.setVisible(True)
 
     triggerPressed = False
     wantsMeasurements = False
@@ -540,6 +549,9 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             if self.showMeasurementsHUD:
                 self.hud.show(self.currentSelectionMeasurements is not None)
             self.textContainer.setVisible(True)
+            
+            # Start measuring now
+            self.initiateLaser(self.point, glyph, deviceState)
 
     def glyphEditorDidKeyUp(self, info):
         if "deviceState" not in info:
@@ -547,19 +559,23 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         else:
             deviceState = info["deviceState"]
             keyDownWithoutModifiers = deviceState["keyDownWithoutModifiers"]
+        
+        glyph = info["glyph"]
+        # Only make persistent measurement if the trigger is pressed first.
         if self.triggerPressed:
             if keyDownWithoutModifiers in (persistentMakeTrigger, persistentBreakTrigger):
-                glyph = info["glyph"]
                 if keyDownWithoutModifiers == persistentMakeTrigger:
                     self.makePersistentMeasurements(glyph, deviceState)
-                elif keyDownWithoutModifiers == persistentBreakTrigger:
-                    self.breakPersistentMeasurements(glyph, deviceState)
-            elif keyDownWithoutModifiers == self.triggerCharacter:
-                self.triggerPressed = False
-                self.wantsMeasurements = False
-                self.hideLayers()
-                setCursorMode(None)
-                self.hud.hide()
+        # You can break the persistent measurement either way, though. Just select the segment, and hit the break trigger.
+        if keyDownWithoutModifiers == persistentBreakTrigger:
+            self.breakPersistentMeasurements(glyph, deviceState)
+        
+        if keyDownWithoutModifiers == self.triggerCharacter:
+            self.triggerPressed = False
+            self.wantsMeasurements = False
+            self.hideLayers()
+            setCursorMode(None)
+            self.hud.hide()
 
     def glyphEditorDidMouseDown(self, info):
         self.wantsMeasurements = False
@@ -567,17 +583,19 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         setCursorMode(None)
 
     # glyphEditorDidMouseMoveDelay = 0.05
-
     def glyphEditorDidMouseMove(self, info):
+        self.point = tuple(info["locationInGlyph"])
+        deviceState = info["deviceState"]
+        glyph = info["glyph"]
+        self.initiateLaser(self.point, glyph, deviceState)
+        
+    def initiateLaser(self, point, glyph, deviceState):
         if not self.wantsMeasurements:
             return
         self.selectionMeasurementsTextLayer.setVisible(False)
-        glyph = info["glyph"]
         if not glyph.bounds:
             self.hideLayers()
             return
-        deviceState = info["deviceState"]
-        point = tuple(info["locationInGlyph"])
         self.currentDisplayFocalPoint = point
         self.currentMeasurements = None
         anchorState = False

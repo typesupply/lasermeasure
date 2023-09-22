@@ -22,14 +22,14 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
         content = """
         = TwoColumnForm
 
+        !§ Laser
+
         : Trigger Character:
         [__]                                        @triggerCharacter
 
         : Text Size:
         [__] points                                 @measurementTextSize
-
-        !§ Laser
-
+        
         : Measure:
         [ ] Selected Points                         @testSelection
         [ ] General                                 @testGeneral
@@ -38,23 +38,31 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
         [ ] Points                                  @testPoints
         [ ] Anchors                                 @testAnchors
 
-        ---
-
         : Color:
         * ColorWell                                 @baseColor
 
-        ####################
+        !§ Locked Measurements
 
-        !§ Highlight
+        : Show:
+        [ ]                                         @showPersistentMeasurements
 
-        : Hover-Match:
+        : Opacity:
+        --X--                                       @persistentMeasurementsOpacity
+
+        : Width:
+        [__] pixels                                 @persistentMeasurementsStrokeWidth
+        
+        : Color:
+        * ColorWell                                 @persistentMeasurementsColor
+
+        !§ Highlighted Matches
+
+        : Match:
         [ ] Segments                                @testSegmentMatches
         [ ] Off Curve Handles                       @testOffCurveMatches
 
         : Auto-Match:
         [ ] Segments                                @autoTestSegmentMatches
-
-        ---
 
         : Opacity:
         --X--                                       @highlightOpacity
@@ -62,43 +70,25 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
         : Width:
         [__] pixels                                 @highlightStrokeWidth
 
-        : Animate:
+        : Pulse-Animate Matches:
         [ ]                                         @highlightAnimate
-        : Animation Duration:
+        : Pulse Speed:
         [__] seconds                                @highlightAnimationDuration
 
-        ####################
-
-        !§ Persistent Measurements
-
+        !§ Named Values HUD
+        
         : Show:
-        [ ]                                         @showPersistentMeasurements
-
-        ---
-
-        : Color:
-        * ColorWell                                 @persistentMeasurementsColor
-
-        : Opacity:
-        --X--                                       @persistentMeasurementsOpacity
-
-        : Width:
-        [__] pixels                                 @persistentMeasurementsStrokeWidth
-
-        ####################
-
-        !§ HUD
-
-        : Show Named Values List:
         [ ]                                         @showMeasurementsHUD
         """
         colorWellWidth = 100
         colorWellHeight = 20
         numberEntryWidth = 40
+        formTitleColumnWidth = 150
+        formItemColumnWidth = 180
         descriptionData = dict(
             content=dict(
-                titleColumnWidth=160,
-                itemColumnWidth=220
+                titleColumnWidth=formTitleColumnWidth,
+                itemColumnWidth=formItemColumnWidth
             ),
             testSelection=dict(
                 value=internalGetDefault("testSelection")
@@ -212,6 +202,7 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
             if existing == value:
                 continue
             internalSetDefault(key, value)
+            # print(key, value)
         postEvent(
             extensionID + ".defaultsChanged"
         )
