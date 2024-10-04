@@ -128,8 +128,14 @@ def removePersistentPointMeasurementReferences(glyph, points):
         return
     identifiers = _getPointIdentifiers(points)
     existing = glyph.lib[persistentPointsKey]
-    if identifiers in existing:
-        existing.remove(identifiers)
+
+    pairs_to_remove = set()
+    for pair in existing:
+        if pair[0] in identifiers and pair[1] in identifiers:
+            pairs_to_remove.add(pair)
+    for pair in pairs_to_remove:
+        existing.remove(pair)
+
     if existing:
         glyph.lib[persistentPointsKey] = existing
     else:
@@ -1168,7 +1174,11 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.updatePersistentMeasurements(glyph)
 
     def breakPersistentMeasurements(self, glyph, deviceState):
+        # If removing measurements on selected points
         points = getSelectedPoints(glyph)
+        # But if no points are selected, remove all measurements
+        if not points:
+            points = [point for contour in glyph.contours for point in contour.points]
         removePersistentPointMeasurementReferences(glyph, points)
         self.needPersistentMeasurementsRebuild = True
         self.updatePersistentMeasurements(glyph)
