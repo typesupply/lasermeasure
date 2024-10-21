@@ -29,7 +29,7 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
 
         : Text Size:
         [__] points                                 @measurementTextSize
-        
+
         : Measure:
         [ ] Selected Points                         @testSelection
         [ ] General                                 @testGeneral
@@ -37,6 +37,7 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
         [ ] Off Curve Handles                       @testOffCurves
         [ ] Points                                  @testPoints
         [ ] Anchors                                 @testAnchors
+        [ ] Show Distance                           @showDistance
 
         : Color:
         * ColorWell                                 @baseColor
@@ -51,7 +52,7 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
 
         : Width:
         [__] pixels                                 @persistentMeasurementsStrokeWidth
-        
+
         : Color:
         * ColorWell                                 @persistentMeasurementsColor
 
@@ -76,7 +77,7 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
         [__] seconds                                @highlightAnimationDuration
 
         !§ Named Values HUD
-        
+
         : Show:
         [ ]                                         @showMeasurementsHUD
         """
@@ -107,6 +108,9 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
             ),
             testAnchors=dict(
                 value=internalGetDefault("testAnchors")
+            ),
+            showDistance=dict(
+                value=internalGetDefault("showDistance")
             ),
             testSegmentMatches=dict(
                 value=internalGetDefault("testSegmentMatches")
