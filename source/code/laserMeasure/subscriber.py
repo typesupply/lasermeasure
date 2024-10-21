@@ -40,7 +40,7 @@ defaults = {
     extensionKeyStub + "highlightOpacity" : 0.3,
     extensionKeyStub + "highlightAnimate" : False,
     extensionKeyStub + "highlightAnimationDuration" : 1,
-    extensionKeyStub + "persistentMeasurementsColor" : (1, 0.5, 0, 1),
+    extensionKeyStub + "persistentMeasurementsColor" : (0.75, 0.75, 0.75, 1),
     extensionKeyStub + "persistentMeasurementsStrokeWidth" : 15,
     extensionKeyStub + "persistentMeasurementsOpacity" : 1.0,
     extensionKeyStub + "measurementTextSize" : 12,

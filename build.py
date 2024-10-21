@@ -64,12 +64,12 @@ for menuItem in menuItems:
 
 basePath = os.path.dirname(__file__)
 sourcePath = os.path.join(basePath, "source")
-libPath = os.path.join(sourcePath, "code")
+libFolder = os.path.join(sourcePath, "code")
 licensePath = os.path.join(basePath, "license.txt")
 requirementsPath = os.path.join(basePath, "requirements.txt")
-resourcesPath = os.path.join(sourcePath, "resources")
-if not os.path.exists(resourcesPath):
-    resourcesPath = None
+resourcesFolder = os.path.join(sourcePath, "resources")
+if not os.path.exists(resourcesFolder):
+    resourcesFolder = None
 extensionFile = "%s.roboFontExt" % name
 buildPath = os.path.join(basePath, "build")
 extensionPath = os.path.join(buildPath, extensionFile)
@@ -101,7 +101,7 @@ if os.path.exists(requirementsPath):
     with open(requirementsPath) as requirements:
         B.requirements = requirements.read()
 print("Building extension...", end=" ")
-v = B.save(extensionPath, libPath=libPath, pycOnly=pycOnly, htmlPath=docPath, resourcesPath=resourcesPath)
+v = B.save(extensionPath, libFolder=libFolder, htmlFolder=docPath, resourcesFolder=resourcesFolder)
 print("done!")
 errors = B.validationErrors()
 if errors:
