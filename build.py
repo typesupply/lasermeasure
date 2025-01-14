@@ -3,7 +3,7 @@
 # -----------------
 
 name = "Laser Measure"
-version = "0.4"
+version = "0.5"
 developer = "Type Supply"
 developerURL = "http://typesupply.com"
 roboFontVersion = "4.2"
