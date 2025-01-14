@@ -22,57 +22,74 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
         content = """
         = TwoColumnForm
 
-        : Measure:
-        [ ] Selected Points                         @testSelection
-        :
-        [ ] General                                 @testGeneral
-        :
-        [ ] Segments                                @testSegments
-        :
-        [ ] Off Curve Handles                       @testOffCurves
-        :
-        [ ] Points                                  @testPoints
-        :
-        [ ] Anchors                                 @testAnchors
-        :
-        [ ] Highlight Matching Segments             @testSegmentMatches
-        :
-        [ ] Highlight Matching Off Curve Handles    @testOffCurveMatches
-
-        ---
-
-        : Auto Measure:
-        [ ] Matching Segments                       @autoTestSegmentMatches
-
-        ---
+        !§ Laser
 
         : Trigger Character:
         [__]                                        @triggerCharacter
 
-        : Base Color:
-        * ColorWell                                 @baseColor
-
-        : Highlight Width:
-        [__] pixels                                 @highlightStrokeWidth
-
-        : Highlight Opacity:
-        --X--                                       @highlightOpacity
-
         : Text Size:
         [__] points                                 @measurementTextSize
 
-        ---
+        : Measure:
+        [ ] Selected Points                         @testSelection
+        [ ] General                                 @testGeneral
+        [ ] Segments                                @testSegments
+        [ ] Off Curve Handles                       @testOffCurves
+        [ ] Points                                  @testPoints
+        [ ] Anchors                                 @testAnchors
+        [ ] Show Distance                           @showDistance
 
-        : HUD
-        [ ] Show Named Values List                  @showMeasurementsHUD
+        : Color:
+        * ColorWell                                 @baseColor
+
+        !§ Locked Measurements
+
+        : Show:
+        [ ]                                         @showPersistentMeasurements
+
+        : Opacity:
+        --X--                                       @persistentMeasurementsOpacity
+
+        : Width:
+        [__] pixels                                 @persistentMeasurementsStrokeWidth
+
+        : Color:
+        * ColorWell                                 @persistentMeasurementsColor
+
+        !§ Highlighted Matches
+
+        : Match:
+        [ ] Segments                                @testSegmentMatches
+        [ ] Off Curve Handles                       @testOffCurveMatches
+
+        : Auto-Match:
+        [ ] Segments                                @autoTestSegmentMatches
+
+        : Opacity:
+        --X--                                       @highlightOpacity
+
+        : Width:
+        [__] pixels                                 @highlightStrokeWidth
+
+        : Pulse-Animate Matches:
+        [ ]                                         @highlightAnimate
+        : Pulse Speed:
+        [__] seconds                                @highlightAnimationDuration
+
+        !§ Named Values HUD
+
+        : Show:
+        [ ]                                         @showMeasurementsHUD
         """
         colorWellWidth = 100
         colorWellHeight = 20
-        numberEntryWidth = 75
+        numberEntryWidth = 40
+        formTitleColumnWidth = 150
+        formItemColumnWidth = 180
         descriptionData = dict(
             content=dict(
-                titleColumnWidth=125,
-                itemColumnWidth=265
+                titleColumnWidth=formTitleColumnWidth,
+                itemColumnWidth=formItemColumnWidth
             ),
             testSelection=dict(
                 value=internalGetDefault("testSelection")
@@ -92,6 +109,9 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
             testAnchors=dict(
                 value=internalGetDefault("testAnchors")
             ),
+            showDistance=dict(
+                value=internalGetDefault("showDistance")
+            ),
             testSegmentMatches=dict(
                 value=internalGetDefault("testSegmentMatches")
             ),
@@ -99,7 +119,7 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
                 value=internalGetDefault("testOffCurveMatches")
             ),
             triggerCharacter=dict(
-                width=20,
+                valueWidth=numberEntryWidth,
                 value=internalGetDefault("triggerCharacter")
             ),
             autoTestSegmentMatches=dict(
@@ -111,19 +131,49 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
                 color=tuple(internalGetDefault("baseColor"))
             ),
             highlightStrokeWidth=dict(
-                width=numberEntryWidth,
+                valueWidth=numberEntryWidth,
                 valueType="integer",
                 value=internalGetDefault("highlightStrokeWidth")
             ),
             highlightOpacity=dict(
                 minValue=0,
                 maxValue=1.0,
+                tickMarks=3,
                 value=internalGetDefault("highlightOpacity")
             ),
+            highlightAnimate=dict(
+                value=internalGetDefault("highlightAnimate")
+            ),
+            highlightAnimationDuration=dict(
+                valueWidth=numberEntryWidth,
+                valueType="number",
+                minValue=0.1,
+                maxValue=5.0,
+                value=internalGetDefault("highlightAnimationDuration")
+            ),
             measurementTextSize=dict(
-                width=numberEntryWidth,
+                valueWidth=numberEntryWidth,
                 valueType="number",
                 value=internalGetDefault("measurementTextSize")
+            ),
+            showPersistentMeasurements=dict(
+                value=internalGetDefault("showPersistentMeasurements")
+            ),
+            persistentMeasurementsColor=dict(
+                width=colorWellWidth,
+                height=colorWellHeight,
+                color=internalGetDefault("persistentMeasurementsColor")
+            ),
+            persistentMeasurementsOpacity=dict(
+                minValue=0,
+                maxValue=1.0,
+                tickMarks=3,
+                value=internalGetDefault("persistentMeasurementsOpacity")
+            ),
+            persistentMeasurementsStrokeWidth=dict(
+                valueWidth=numberEntryWidth,
+                valueType="integer",
+                value=internalGetDefault("persistentMeasurementsStrokeWidth")
             ),
             showMeasurementsHUD=dict(
                 value=internalGetDefault("showMeasurementsHUD")
@@ -140,18 +190,26 @@ class _LaserMeasureSettingsWindowController(ezui.WindowController):
         self.w.open()
 
     def contentCallback(self, sender):
-        for key, value in sender.getItemValues().items():
+        self.setDefaults()
+
+    def triggerCharacterCallback(self, sender):
+        # Keep the character limited to a length of 1, and lowercase it.
+        character = sender.get()
+        if len(character) > 1:
+            character = character[-1]
+            self.w.getItem("triggerCharacter").set(character.lower())
+        self.setDefaults()
+
+    def setDefaults(self):
+        for key, value in self.w.getItemValues().items():
             existing = internalGetDefault(key)
             if existing == value:
                 continue
             internalSetDefault(key, value)
+            # print(key, value)
         postEvent(
             extensionID + ".defaultsChanged"
         )
-
-    def triggerCharacterCallback(self, sender):
-        if len(sender.get()) == 1:
-            self.contentCallback(sender)
 
 
 note = """

@@ -56,9 +56,24 @@ you have points selected, a `+` button will appear. Pressing this
 will open the named values sheet with a new entry based on the
 current selection.
 
+## Persistent Measurements
+
+Two points in a glyph can be linked so that their measurements
+are always displayed when the trigger character is pressed.
+To create a link, select two points, press and hold the trigger
+character and press and release the return key. To remove a link,
+select two points, press and hold the trigger character and
+press and release the escape key.
+
+## Settings
+
+If you want to change a settings, use the settings window.
+
+## Scripting
+
 ### Storage Format
 
-Values are stored in `font.lib` under the key `com.typesupply.LaserMeasure.measurements`.
+Named values are stored in `font.lib` under the key `com.typesupply.LaserMeasure.measurements`.
 The data is stored as a dict of value names and dicts as values. The
 value dict has `width` and/or `height` keys. If `width` is defined but
 `height` is not any height will match. If `height` if defined but
@@ -85,41 +100,12 @@ events.postEvent(
 )
 ```
 
-## Settings
-
-If you want to change a settings, use the settings window. This window
-if only available in RoboFont 4.2 and later. If you are using an earlier
-version you'll need to do it with code using these keys until a window
-is ready:
+### Persistent measurement functions:
 
 ```
-com.typesupply.LaserMeasure.triggerCharacter
-com.typesupply.LaserMeasure.baseColor
-com.typesupply.LaserMeasure.matchColors
-com.typesupply.LaserMeasure.highlightStrokeWidth
-com.typesupply.LaserMeasure.highlightOpacity
-com.typesupply.LaserMeasure.measurementTextSize
-com.typesupply.LaserMeasure.showMeasurementsHUD
-com.typesupply.LaserMeasure.testSelection
-com.typesupply.LaserMeasure.testSegments
-com.typesupply.LaserMeasure.testSegmentMatches
-com.typesupply.LaserMeasure.testOffCurves
-com.typesupply.LaserMeasure.testOffCurveMatches
-com.typesupply.LaserMeasure.testPoints
-com.typesupply.LaserMeasure.testGeneral
-com.typesupply.LaserMeasure.testAnchors
-com.typesupply.LaserMeasure.autoTestSegmentMatches
-```
-
-```python
-from mojo.extensions import setExtensionDefault
-
-setExtensionDefault(
-    "com.typesupply.LaserMeasure.triggerCharacter",
-    "m"
-)
-setExtensionDefault(
-    "com.typesupply.LaserMeasure.baseColor",
-    (1, 0, 1, 0.5)
-)
+storePersistentPointMeasurementReferences
+removePersistentPointMeasurementReferences
+clearPersistentPointMeasurementReferences
+getPersistentPointMeasurementReferences
+getPersistentPointMeasurements
 ```
