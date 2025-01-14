@@ -863,6 +863,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         points = getSelectedPoints(glyph)
         measurements = measurePoints(points)
         if not measurements:
+            self.currentSelectionMeasurements = None
             return
         if measurements == self.currentSelectionMeasurements:
             return
