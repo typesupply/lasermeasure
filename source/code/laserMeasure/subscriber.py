@@ -238,6 +238,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
     # the super.
 
     def build(self):
+        self.namedMeaurementsLoadedFromFont = None
         window = self.getGlyphEditor()
 
         # Glyph Editor Overlay
@@ -445,6 +446,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         stored = font.lib.get(libKey, {})
         self.hud.setItems(stored)
         self.namedWidthHeightMeasurements, self.namedWidthMeasurements, self.namedHeightMeasurements = loadNamedMeasurements(font)
+        self.namedMeaurementsLoadedFromFont = font
 
     def destroy(self):
         self.activeContainer.clearSublayers()
@@ -499,6 +501,16 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
     needPersistentMeasurementsRebuild = True
 
     def glyphEditorDidSetGlyph(self, info):
+        glyph = info["glyph"]
+        # RoboFont allows switching the glyph in
+        # a specific editor even if the glyph is
+        # from a different font. if the font is
+        # different from the font the measurements
+        # were loaded from, they need to be reloaded.
+        if glyph is not None:
+            font = glyph.font
+            if font != self.namedMeaurementsLoadedFromFont:
+                self.loadNamedMeasurements()
         self.needAutoSegmentHighlightRebuild = True
         self.needPersistentMeasurementsRebuild = True
 
