@@ -361,6 +361,7 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
         self.doTestGeneral = internalGetDefault("testGeneral")
         self.doTestAnchors = internalGetDefault("testAnchors")
         self.doAutoTestSegmentMatches = internalGetDefault("autoTestSegmentMatches")
+        self.doUseItalicAngle = UI.getDefault("glyphViewShouldUseItalicAngleForDisplay")
         self.showPersistentMeasurements = internalGetDefault("showPersistentMeasurements")
         mainColor = internalGetDefault("baseColor")
         backgroundColor = UI.getDefault("glyphViewBackgroundColor")
@@ -677,8 +678,15 @@ class LaserMeasureSubscriber(subscriber.Subscriber):
             xBeforeFallback, yBeforeFallback, xAfterFallback, yAfterFallback = glyph.bounds
         else:
             font = glyph.font
-            xBeforeFallback = min((0, x))
-            xAfterFallback = max((glyph.width, x))
+            if all((self.doUseItalicAngle, font.info.italicAngle)):
+                offset = font.lib.get("com.typemytype.robofont.italicSlantOffset", 0)
+                origin = angledPoint((0, y), font.info.italicAngle, offset)[0]
+                width = angledPoint((glyph.width, y), font.info.italicAngle, offset)[0]
+                xBeforeFallback = min((origin, x))
+                xAfterFallback = max((width, x))
+            else:
+                xBeforeFallback = min((0, x))
+                xAfterFallback = max((glyph.width, x))
             verticalMetrics = [
                 font.info.descender,
                 0,
@@ -1744,6 +1752,14 @@ def getContourWidthHeight(contour):
     w = xMax - xMin
     h = yMax - yMin
     return (w, h)
+
+def angledPoint(pt, angle, offset=0):
+    if not angle:
+        return pt
+    x, y = pt
+    x = x - math.tan(math.radians(angle)) * y
+    x += offset
+    return x, y
 
 # Segment Matching
 # ----------------
