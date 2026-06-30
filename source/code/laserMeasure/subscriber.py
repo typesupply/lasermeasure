@@ -1967,6 +1967,9 @@ class RelativeHandlesPen(BasePen):
         super().__init__()
         self.handles = []
 
+    def addComponent(self, *args, **kwargs):
+        pass
+
     def _moveTo(self, pt):
         self.prevPoint = pt
 
